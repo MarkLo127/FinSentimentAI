@@ -2,7 +2,6 @@
 
 AI 金融市場情緒分析系統 — 透過 **Claude Haiku 4.5** 分析**完整新聞內文**（非標題），解決財經報導的「標題殺人」現象。
 
-> 詳細規格見 [FinSentiment_AI_專案計劃書.md](./FinSentiment_AI_專案計劃書.md)
 
 ## 架構
 
