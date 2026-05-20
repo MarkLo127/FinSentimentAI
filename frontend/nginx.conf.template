@@ -1,5 +1,5 @@
 server {
-    listen 80;
+    listen ${PORT};
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
@@ -11,9 +11,11 @@ server {
         try_files $uri =404;
     }
 
-    # API → backend service in the docker-compose network
+    # API → backend service. ${BACKEND_HOST} is "host:port":
+    #   local docker-compose: "backend:8000"
+    #   Railway:              "<backend-service>.railway.internal:8000"
     location /api/ {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_HOST};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

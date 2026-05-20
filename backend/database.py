@@ -11,8 +11,19 @@ from config import get_settings
 
 settings = get_settings()
 
+
+def _normalize_async_url(url: str) -> str:
+    # Railway/Heroku/Supabase hand out `postgres://` or `postgresql://`; SQLAlchemy
+    # async needs the explicit `+asyncpg` driver. Rewrite if it's missing.
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+    return url
+
+
 engine = create_async_engine(
-    settings.database_url,
+    _normalize_async_url(settings.database_url),
     echo=False,
     pool_pre_ping=True,
 )

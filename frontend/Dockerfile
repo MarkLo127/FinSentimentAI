@@ -10,5 +10,10 @@ RUN bun run build
 
 FROM nginx:1.27-alpine AS runtime
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+# nginx 1.19+ auto-runs envsubst on /etc/nginx/templates/*.template at boot,
+# emitting the result into /etc/nginx/conf.d/. The filter limits substitution
+# to PORT and BACKEND_HOST so nginx's own variables ($host, $uri) survive.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV NGINX_ENVSUBST_FILTER='^(PORT|BACKEND_HOST)$' \
+    PORT=80 \
+    BACKEND_HOST=backend:8000

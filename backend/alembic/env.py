@@ -12,11 +12,11 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import get_settings  # noqa: E402
-from database import Base  # noqa: E402
+from database import Base, _normalize_async_url  # noqa: E402
 import models  # noqa: E402, F401 — register all model classes
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+config.set_main_option("sqlalchemy.url", _normalize_async_url(get_settings().database_url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
