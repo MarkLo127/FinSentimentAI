@@ -1,0 +1,116 @@
+# One-command full-stack startup:
+#   cp .env.example .env  (fill ANTHROPIC_API_KEY + 4 news keys)
+#   docker compose up -d --build
+#
+#   Frontend:  http://localhost:5173   (nginx-served Vite SPA, proxies /api → backend)
+#   Backend:   http://localhost:8000   (direct FastAPI, useful for curl/openapi)
+#   pgAdmin:   http://localhost:5050   (admin@local.dev / admin)
+#   Postgres:  localhost:5433          (in-container 5432; remapped to avoid host 5432 conflicts)
+#
+# The `scheduler` service runs APScheduler in the foreground — periodically
+# pulling fetchers → sentiment → daily_summary on the intervals from .env.
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finsentiment}:${POSTGRES_PASSWORD:-finsentiment_dev}@postgres:5432/${POSTGRES_DB:-finsentiment}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5}
+  MARKETAUX_API_KEY: ${MARKETAUX_API_KEY:-}
+  FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+  NEWSAPI_KEY: ${NEWSAPI_KEY:-}
+  ALPHA_VANTAGE_KEY: ${ALPHA_VANTAGE_KEY:-}
+  JINA_API_KEY: ${JINA_API_KEY:-}
+  SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
+  ALGORITHM: ${ALGORITHM:-HS256}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+  MONITORED_TICKERS: ${MONITORED_TICKERS:-TSM}
+  NEWS_FETCH_INTERVAL_MINUTES: ${NEWS_FETCH_INTERVAL_MINUTES:-30}
+  CORS_ORIGINS: http://localhost:5173,http://localhost,http://frontend
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finsentiment-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finsentiment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finsentiment_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-finsentiment}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finsentiment}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: finsentiment-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finsentiment-backend
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "1"
+      # No auto-seed. The user manages the watchlist via the dashboard's
+      # "+ 新增" button. Override to "1" if you want the starter 10-stock seed.
+      SEED_ON_START: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finsentiment-scheduler
+    command: ["python", "-m", "scripts.run_scheduler"]
+    environment:
+      <<: *backend-env
+      # Backend container already migrates + seeds — scheduler should not race
+      RUN_MIGRATIONS: "0"
+      SEED_ON_START: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finsentiment-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgadmin_data:

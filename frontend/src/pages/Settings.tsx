@@ -1,0 +1,248 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, Check, Eye, EyeOff, X } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Badge, Button, Card, IconButton, Input } from '../components/ui'
+import { deleteSetting, getSettingsStatus, setSetting } from '../services/api'
+import type { SettingStatus } from '../types/api'
+
+const KEY_META: Record<string, { labelKey: string; helpKey: string; signupUrl: string }> = {
+  ANTHROPIC_API_KEY: {
+    labelKey: 'settings.keys.anthropic.label',
+    helpKey: 'settings.keys.anthropic.help',
+    signupUrl: 'https://console.anthropic.com/',
+  },
+  MARKETAUX_API_KEY: {
+    labelKey: 'settings.keys.marketaux.label',
+    helpKey: 'settings.keys.marketaux.help',
+    signupUrl: 'https://www.marketaux.com/',
+  },
+  FINNHUB_API_KEY: {
+    labelKey: 'settings.keys.finnhub.label',
+    helpKey: 'settings.keys.finnhub.help',
+    signupUrl: 'https://finnhub.io/',
+  },
+  NEWSAPI_KEY: {
+    labelKey: 'settings.keys.newsapi.label',
+    helpKey: 'settings.keys.newsapi.help',
+    signupUrl: 'https://newsapi.org/',
+  },
+  ALPHA_VANTAGE_KEY: {
+    labelKey: 'settings.keys.alpha_vantage.label',
+    helpKey: 'settings.keys.alpha_vantage.help',
+    signupUrl: 'https://www.alphavantage.co/support/#api-key',
+  },
+  JINA_API_KEY: {
+    labelKey: 'settings.keys.jina.label',
+    helpKey: 'settings.keys.jina.help',
+    signupUrl: 'https://jina.ai/',
+  },
+}
+
+function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void }) {
+  const { t, i18n } = useTranslation()
+  const meta = KEY_META[row.key]
+  const label = meta ? t(meta.labelKey) : row.key
+  const help = meta ? t(meta.helpKey) : ''
+  const signupUrl = meta?.signupUrl ?? ''
+  const [value, setValue] = useState('')
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    if (!value) return
+    setError(null)
+    setSaved(false)
+    setBusy(true)
+    try {
+      await setSetting(row.key, value.trim())
+      setValue('')
+      setSaved(true)
+      onSaved()
+      setTimeout(() => setSaved(false), 2500)
+    } catch (err: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setError((err as any)?.response?.data?.detail ?? String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clear() {
+    setError(null)
+    setBusy(true)
+    try {
+      await deleteSetting(row.key)
+      onSaved()
+    } catch (err: unknown) {
+      setError(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card padding="md">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-text">{label}</h3>
+            <span className="font-mono text-xs text-text-subtle">{row.key}</span>
+            {row.set_in_db && (
+              <Badge tone="positive" size="sm" icon={<Check size={11} />}>
+                DB
+              </Badge>
+            )}
+            {!row.set_in_db && row.set_in_env && (
+              <Badge tone="neutral" size="sm">
+                env
+              </Badge>
+            )}
+            {!row.is_set && (
+              <Badge tone="warning" size="sm">
+                {t('settings.unset')}
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
+            {help}{' '}
+            {signupUrl && (
+              <a
+                href={signupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {t('settings.get_key')} →
+              </a>
+            )}
+          </p>
+          {row.updated_at && (
+            <p className="text-[10px] text-text-subtle mt-2 font-mono">
+              {t('settings.last_updated')}：
+              {new Date(row.updated_at).toLocaleString(i18n.language)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <Input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={
+              row.is_set
+                ? t('settings.placeholder_overwrite')
+                : t('settings.placeholder_new')
+            }
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono"
+            rightSlot={
+              <IconButton
+                size="sm"
+                variant="ghost"
+                onClick={() => setShow((s) => !s)}
+                aria-label={show ? t('settings.hide') : t('settings.show')}
+              >
+                {show ? <EyeOff size={14} /> : <Eye size={14} />}
+              </IconButton>
+            }
+          />
+        </div>
+        <div className="flex items-center gap-2 sm:flex-shrink-0">
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            onClick={save}
+            disabled={!value}
+            loading={busy}
+            className="flex-1 sm:flex-initial"
+          >
+            {busy ? t('settings.saving') : t('settings.save')}
+          </Button>
+          {row.set_in_db && (
+            <IconButton
+              size="md"
+              variant="ghost"
+              onClick={clear}
+              disabled={busy}
+              title={t('settings.clear_db_title')}
+              aria-label={t('settings.clear_db_title')}
+            >
+              <X size={16} />
+            </IconButton>
+          )}
+        </div>
+      </div>
+      {saved && (
+        <p className="mt-2 text-xs text-sentiment-positive">
+          {t('settings.saved_hint')}
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-sentiment-negative">{error}</p>}
+    </Card>
+  )
+}
+
+export default function Settings() {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: getSettingsStatus,
+  })
+
+  return (
+    <div className="max-w-3xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
+      <header>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-text">
+          {t('settings.title')}
+        </h1>
+        <p className="text-sm md:text-base text-text-muted mt-1">
+          {t('settings.subtitle')}
+        </p>
+      </header>
+
+      {isLoading && (
+        <p className="text-text-subtle text-sm">{t('common.loading')}</p>
+      )}
+      {error && (
+        <p className="text-sentiment-negative text-sm">
+          {t('common.failed_to_load')}：{String(error)}
+        </p>
+      )}
+
+      {data && (
+        <div className="space-y-3">
+          {data.map((row) => (
+            <SettingRow
+              key={row.key}
+              row={row}
+              onSaved={() =>
+                qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <Card padding="md" className="bg-accent-soft border-accent/30">
+        <div className="flex items-start gap-3">
+          <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-accent" />
+          <div className="text-sm">
+            <p className="font-medium text-text">{t('settings.security_title')}</p>
+            <p className="text-xs mt-1 text-text-muted leading-relaxed">
+              {t('settings.security_body')}
+            </p>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}

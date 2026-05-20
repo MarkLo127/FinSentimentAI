@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <title>FinSentiment AI</title>
+    <script>
+      // Pre-apply the saved theme before paint to avoid a light→dark flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var prefersDark =
+            window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches
+          var isDark = stored === 'dark' || (!stored && prefersDark)
+          if (isDark) document.documentElement.classList.add('dark')
+        } catch (e) {
+          /* localStorage unavailable — fall back to light */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

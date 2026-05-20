@@ -1,0 +1,244 @@
+{
+  "common": {
+    "loading": "載入中…",
+    "cancel": "取消",
+    "confirm": "確認",
+    "save": "存檔",
+    "search": "搜尋",
+    "clear": "清除",
+    "retry": "重試",
+    "delete": "刪除",
+    "failed_to_load": "無法載入",
+    "n_days": "{{n}} 天",
+    "view": "查看"
+  },
+  "nav": {
+    "dashboard": "儀表板",
+    "news": "新聞",
+    "settings": "設定"
+  },
+  "language": {
+    "label": "語言"
+  },
+  "sentiment": {
+    "positive": "正面",
+    "negative": "負面",
+    "neutral": "中性",
+    "clickbait": "標題殺人"
+  },
+  "dashboard": {
+    "title": "市場情緒總覽",
+    "subtitle": "基於 Claude Haiku 4.5 分析的全內文情緒（解標題殺人）"
+  },
+  "market": {
+    "today_title": "今日市場情緒",
+    "positive": "正面",
+    "neutral": "中性",
+    "negative": "負面"
+  },
+  "trend": {
+    "title": "情緒趨勢",
+    "threshold_hint": "綠/紅虛線：±0.3 樂觀/悲觀門檻",
+    "no_data_range": "此區間無資料"
+  },
+  "stats": {
+    "title": "情緒統計",
+    "all_stocks": "全部股票",
+    "select_stock": "選擇股票",
+    "hint": "每日新聞情緒分布：綠=正面、灰=中性、紅=負面"
+  },
+  "pie": {
+    "title": "情緒分布",
+    "total": "共 {{count}} 篇",
+    "no_data_today": "今日無資料"
+  },
+  "ranking": {
+    "title": "熱門股票",
+    "empty": "尚無排行資料",
+    "col_rank": "#",
+    "col_symbol_name": "代碼 / 名稱",
+    "col_score": "分數",
+    "col_count": "篇數",
+    "col_actions": "操作",
+    "view": "查看",
+    "view_aria": "查看 {{symbol}}",
+    "delete_aria": "刪除 {{symbol}}",
+    "add": "新增"
+  },
+  "news_feed": {
+    "title": "最新新聞",
+    "view_all": "看全部 →",
+    "empty": "尚無新聞",
+    "open_original": "開啟原始連結"
+  },
+  "news_list": {
+    "title": "新聞列表",
+    "subtitle": "基於 Claude Haiku 4.5 全內文情緒分析",
+    "search_placeholder": "搜尋新聞標題或股票代號…",
+    "filter_label": "篩選：",
+    "empty": "沒有符合條件的新聞",
+    "never_fetched": "{{symbol}} ({{name}}) 尚未抓取過任何新聞。",
+    "fetch_now": "立即抓取 {{symbol}} 並分析",
+    "no_stock_prompt": "找不到股票「{{symbol}}」，要加入監控並開始分析嗎？",
+    "no_stock_hint": "新增後會立刻向多個資料源抓取相關新聞並用 Claude 分析情緒，過程約 1-2 分鐘。",
+    "add_and_analyze": "新增 {{symbol}} 並開始分析"
+  },
+  "news_detail": {
+    "back": "回列表",
+    "back_to_list": "回新聞列表",
+    "not_found": "找不到新聞 #{{id}}。",
+    "original_link": "原始連結",
+    "sentiment_title": "情緒分析",
+    "clickbait_title": "偵測為標題殺人",
+    "clickbait_desc": "標題情緒與內文不一致；以下評分基於內文判讀",
+    "drivers": "關鍵驅動因子",
+    "reasoning": "推理",
+    "full_body": "完整內文",
+    "snippet_warning": "此篇僅取得 API 摘要（Jina/trafilatura 都失敗，多半是付費牆）",
+    "no_body": "(無內文)",
+    "translating": "正在從 {{lang}} 翻譯成繁體中文…",
+    "translating_long": "正在從 {{lang}} 翻譯成繁體中文，可能需要 30-60 秒，請耐心等候…",
+    "translated_from": "已從 {{lang}} 翻譯成繁體中文",
+    "translation_failed": "翻譯失敗，顯示原文",
+    "view_original": "查看原文",
+    "view_translation": "顯示翻譯",
+    "showing_original": "顯示原文中"
+  },
+  "stock_detail": {
+    "not_found": "找不到股票「{{symbol}}」。",
+    "back_home": "回首頁",
+    "trend": "情緒走勢",
+    "no_data": "此區間尚無情緒資料",
+    "fetch_now": "立即抓取並分析 {{symbol}}",
+    "waiting_first_data": "正在處理中，完成後會自動顯示…",
+    "drivers_latest": "驅動因子（最新日）",
+    "recent_news": "相關新聞",
+    "news_count": "共 {{n}} 篇",
+    "news_count_filtered": "顯示 {{shown}} / {{total}} 篇",
+    "filter_all": "全部",
+    "no_news": "尚無相關新聞",
+    "no_news_for_filter": "沒有符合此篩選的新聞"
+  },
+  "refresh": {
+    "queued": "排隊中…",
+    "fetching": "抓取新聞中…",
+    "analyzing": "Claude 分析情緒中…",
+    "summarizing": "統整當日情緒中…",
+    "running": "處理中…",
+    "background_hint": "關閉本頁也不會中斷，回來時會繼續顯示進度 (job #{{id}})",
+    "failed": "抓取失敗",
+    "run_number": "今日第 {{n}} 次",
+    "indicator": {
+      "tasks_running_one": "{{count}} 個任務進行中",
+      "tasks_running_other": "{{count}} 個任務進行中",
+      "tasks_running": "{{count}} 個任務進行中",
+      "click_to_view": "點擊查看詳細進度"
+    },
+    "run_number": "第 {{n}} 次",
+    "run_number_today": "今日第 {{n}} 次分析"
+  },
+  "settings": {
+    "title": "API Keys",
+    "subtitle": "設值會立即寫入 DB；backend 即時生效，scheduler 容器於下次 tick (≤ 10 分鐘) 套用。",
+    "unset": "未設定",
+    "get_key": "取得 key",
+    "last_updated": "最後更新",
+    "placeholder_overwrite": "貼入新值以覆寫…",
+    "placeholder_new": "貼入 key 後存檔",
+    "save": "存檔",
+    "saving": "存…",
+    "show": "顯示",
+    "hide": "隱藏",
+    "clear_db_title": "清除 DB 中的值；env 設的會 fallback 回來",
+    "saved_hint": "已存檔，scheduler 下次 tick 自動套用。",
+    "security_title": "安全提醒",
+    "security_body": "此頁面未做存取控制，預期為單機 / 本機 docker compose 部署使用。若要對外開放，請先在 routers/admin.py 加 JWT auth dependency。",
+    "keys": {
+      "anthropic": {
+        "label": "Anthropic API Key",
+        "help": "驅動 Claude Haiku 4.5 情緒分析；必填。"
+      },
+      "marketaux": {
+        "label": "Marketaux Key",
+        "help": "英文財經新聞 (100 req/day 免費)。"
+      },
+      "finnhub": {
+        "label": "Finnhub Key",
+        "help": "個股新聞 (60 req/min 免費)。"
+      },
+      "newsapi": {
+        "label": "NewsAPI.org Key",
+        "help": "通用新聞 (100 req/day 免費)。"
+      },
+      "alpha_vantage": {
+        "label": "Alpha Vantage Key",
+        "help": "含原生情緒分數可作 baseline (25 req/day)。"
+      },
+      "jina": {
+        "label": "Jina Reader Key (選填)",
+        "help": "提升 Jina Reader 速率限制到 500/min;不填走 20/min 匿名。"
+      }
+    }
+  },
+  "stock_mgmt": {
+    "title": "股票管理",
+    "subtitle": "刪除股票會連同所有 news / comments / sentiment / market_summary 一併移除（無法復原）",
+    "add": "新增股票",
+    "empty": "尚無股票"
+  },
+  "stock_form": {
+    "symbol_placeholder": "代碼 (TSLA / NVDA / 2330)",
+    "name_placeholder": "名稱 (Tesla / 台積電)",
+    "name_optional_placeholder": "名稱（留空則用代碼）",
+    "exchange_placeholder": "交易所 (NASDAQ / TWSE，可空)",
+    "sector_placeholder": "產業 (可空)",
+    "auto_fill_hint": "送出後系統會自動透過 Finnhub 查詢公司名稱、交易所與產業；查不到時以代碼作為名稱。",
+    "submit": "新增",
+    "adding": "新增中…",
+    "add_and_analyze": "新增 {{symbol}} 並分析"
+  },
+  "stock_delete": {
+    "confirm_title": "刪除股票",
+    "calculating": "統計影響中…",
+    "will_remove": "將同時清除：",
+    "impact": {
+      "news": "{{count}} 篇新聞 + 對應情緒分析",
+      "comments": "{{count}} 則社群留言 + 對應情緒分析",
+      "sentiment": "{{count}} 筆獨立情緒紀錄",
+      "summary": "{{count}} 筆每日情緒總結"
+    },
+    "irreversible": "**此操作無法復原**",
+    "confirm": "確認刪除",
+    "deleting": "刪除中…"
+  },
+  "login": {
+    "title": "登入",
+    "username": "帳號",
+    "password": "密碼",
+    "submit": "登入",
+    "submitting": "登入中…",
+    "no_account": "還沒帳號？",
+    "go_register": "註冊",
+    "err_invalid": "帳號或密碼錯誤"
+  },
+  "register": {
+    "title": "註冊",
+    "username": "帳號",
+    "username_hint": "(3-50 字元，字母/數字/_-)",
+    "email": "Email",
+    "password": "密碼",
+    "password_hint": "(至少 8 字元)",
+    "submit": "註冊並登入",
+    "submitting": "註冊中…",
+    "have_account": "已有帳號？",
+    "go_login": "登入",
+    "err_dup": "帳號或 email 已被註冊",
+    "err_format": "輸入格式錯誤（帳號 3+ 字元、密碼 8+ 字元、Email 需有效）"
+  },
+  "time": {
+    "just_now": "剛剛",
+    "minutes_ago": "{{n}} 分鐘前",
+    "hours_ago": "{{n}} 小時前",
+    "days_ago": "{{n}} 天前"
+  }
+}

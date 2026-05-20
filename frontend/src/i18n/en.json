@@ -1,0 +1,244 @@
+{
+  "common": {
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "search": "Search",
+    "clear": "Clear",
+    "retry": "Retry",
+    "delete": "Delete",
+    "failed_to_load": "Failed to load",
+    "n_days": "{{n}} d",
+    "view": "View"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "news": "News",
+    "settings": "Settings"
+  },
+  "language": {
+    "label": "Language"
+  },
+  "sentiment": {
+    "positive": "Positive",
+    "negative": "Negative",
+    "neutral": "Neutral",
+    "clickbait": "Clickbait"
+  },
+  "dashboard": {
+    "title": "Market Sentiment Overview",
+    "subtitle": "Full-content sentiment analysis powered by Claude Haiku 4.5 (anti-clickbait)"
+  },
+  "market": {
+    "today_title": "Today's Market Sentiment",
+    "positive": "Positive",
+    "neutral": "Neutral",
+    "negative": "Negative"
+  },
+  "trend": {
+    "title": "Sentiment Trend",
+    "threshold_hint": "Green/red dashes: ±0.3 bullish / bearish thresholds",
+    "no_data_range": "No data in this range"
+  },
+  "stats": {
+    "title": "Sentiment Stats",
+    "all_stocks": "All stocks",
+    "select_stock": "Select stock",
+    "hint": "Daily sentiment distribution — green=positive, gray=neutral, red=negative"
+  },
+  "pie": {
+    "title": "Sentiment Distribution",
+    "total": "Total {{count}}",
+    "no_data_today": "No data today"
+  },
+  "ranking": {
+    "title": "Top Stocks",
+    "empty": "No ranking data yet",
+    "col_rank": "#",
+    "col_symbol_name": "Symbol / Name",
+    "col_score": "Score",
+    "col_count": "Count",
+    "col_actions": "Actions",
+    "view": "View",
+    "view_aria": "View {{symbol}}",
+    "delete_aria": "Delete {{symbol}}",
+    "add": "Add"
+  },
+  "news_feed": {
+    "title": "Latest News",
+    "view_all": "View all →",
+    "empty": "No news yet",
+    "open_original": "Open original link"
+  },
+  "news_list": {
+    "title": "News",
+    "subtitle": "Full-content sentiment analysis via Claude Haiku 4.5",
+    "search_placeholder": "Search headlines or ticker symbols…",
+    "filter_label": "Filter:",
+    "empty": "No news matches the filter",
+    "never_fetched": "{{symbol}} ({{name}}) has no news fetched yet.",
+    "fetch_now": "Fetch and analyze {{symbol}} now",
+    "no_stock_prompt": "Stock \"{{symbol}}\" isn't on the watchlist — add it and start analyzing?",
+    "no_stock_hint": "Adding pulls related news from multiple sources and runs Claude sentiment analysis (~1-2 min).",
+    "add_and_analyze": "Add {{symbol}} and analyze"
+  },
+  "news_detail": {
+    "back": "Back",
+    "back_to_list": "Back to news list",
+    "not_found": "News #{{id}} not found.",
+    "original_link": "Original",
+    "sentiment_title": "Sentiment Analysis",
+    "clickbait_title": "Detected as clickbait",
+    "clickbait_desc": "Headline sentiment doesn't match body; scoring is based on the body.",
+    "drivers": "Key drivers",
+    "reasoning": "Reasoning",
+    "full_body": "Full body",
+    "snippet_warning": "Only the API snippet is available (Jina/trafilatura both failed — likely paywalled).",
+    "no_body": "(no body)",
+    "translating": "Translating from {{lang}} to English…",
+    "translating_long": "Translating from {{lang}} to English — may take 30-60 seconds, please wait…",
+    "translated_from": "Translated from {{lang}} to English",
+    "translation_failed": "Translation failed; showing original",
+    "view_original": "View original",
+    "view_translation": "Show translation",
+    "showing_original": "Showing original"
+  },
+  "stock_detail": {
+    "not_found": "Stock \"{{symbol}}\" not found.",
+    "back_home": "Back to home",
+    "trend": "Sentiment trend",
+    "no_data": "No sentiment data in this range",
+    "fetch_now": "Fetch and analyze {{symbol}} now",
+    "waiting_first_data": "Processing — data will appear when ready…",
+    "drivers_latest": "Key drivers (latest day)",
+    "recent_news": "Related news",
+    "news_count": "{{n}} articles",
+    "news_count_filtered": "Showing {{shown}} of {{total}}",
+    "filter_all": "All",
+    "no_news": "No related news yet",
+    "no_news_for_filter": "No articles match this filter"
+  },
+  "refresh": {
+    "queued": "Queued…",
+    "fetching": "Fetching news…",
+    "analyzing": "Claude analyzing sentiment…",
+    "summarizing": "Aggregating daily summary…",
+    "running": "Processing…",
+    "background_hint": "Safe to close this tab — progress will resume when you return (job #{{id}})",
+    "failed": "Fetch failed",
+    "run_number": "today's #{{n}}",
+    "indicator": {
+      "tasks_running_one": "{{count}} task running",
+      "tasks_running_other": "{{count}} tasks running",
+      "tasks_running": "{{count}} tasks running",
+      "click_to_view": "Click to view progress"
+    },
+    "run_number": "#{{n}}",
+    "run_number_today": "Today's analysis #{{n}}"
+  },
+  "settings": {
+    "title": "API Keys",
+    "subtitle": "Values are written to the DB immediately; backend picks them up live, scheduler container within the next tick (≤ 10 min).",
+    "unset": "unset",
+    "get_key": "get a key",
+    "last_updated": "Last updated",
+    "placeholder_overwrite": "Paste new value to overwrite…",
+    "placeholder_new": "Paste key and save",
+    "save": "Save",
+    "saving": "Saving…",
+    "show": "Show",
+    "hide": "Hide",
+    "clear_db_title": "Clear DB-stored value; env-provided value will fall back",
+    "saved_hint": "Saved. Scheduler will apply on its next tick.",
+    "security_title": "Security note",
+    "security_body": "This page has no access control; intended for single-machine / local docker compose use. To expose externally, add a JWT auth dependency to routers/admin.py.",
+    "keys": {
+      "anthropic": {
+        "label": "Anthropic API Key",
+        "help": "Powers Claude Haiku 4.5 sentiment analysis; required."
+      },
+      "marketaux": {
+        "label": "Marketaux Key",
+        "help": "English financial news (100 req/day free)."
+      },
+      "finnhub": {
+        "label": "Finnhub Key",
+        "help": "Per-stock news (60 req/min free)."
+      },
+      "newsapi": {
+        "label": "NewsAPI.org Key",
+        "help": "General news (100 req/day free)."
+      },
+      "alpha_vantage": {
+        "label": "Alpha Vantage Key",
+        "help": "Includes built-in sentiment scores for baseline (25 req/day)."
+      },
+      "jina": {
+        "label": "Jina Reader Key (optional)",
+        "help": "Raises Jina Reader rate limit to 500/min; without it, 20/min anonymous."
+      }
+    }
+  },
+  "stock_mgmt": {
+    "title": "Stock Management",
+    "subtitle": "Deleting a stock also removes all related news / comments / sentiment / market_summary (unrecoverable).",
+    "add": "Add stock",
+    "empty": "No stocks yet"
+  },
+  "stock_form": {
+    "symbol_placeholder": "Symbol (TSLA / NVDA / 2330)",
+    "name_placeholder": "Name (Tesla / TSMC)",
+    "name_optional_placeholder": "Name (defaults to symbol if blank)",
+    "exchange_placeholder": "Exchange (NASDAQ / TWSE, optional)",
+    "sector_placeholder": "Sector (optional)",
+    "auto_fill_hint": "Submitting looks up name / exchange / sector via Finnhub. Falls back to symbol-as-name if not found.",
+    "submit": "Add",
+    "adding": "Adding…",
+    "add_and_analyze": "Add {{symbol}} and analyze"
+  },
+  "stock_delete": {
+    "confirm_title": "Delete stock",
+    "calculating": "Calculating impact…",
+    "will_remove": "Will also remove:",
+    "impact": {
+      "news": "{{count}} news articles + their sentiment",
+      "comments": "{{count}} social comments + their sentiment",
+      "sentiment": "{{count}} standalone sentiment records",
+      "summary": "{{count}} daily sentiment summaries"
+    },
+    "irreversible": "**This action cannot be undone**",
+    "confirm": "Confirm delete",
+    "deleting": "Deleting…"
+  },
+  "login": {
+    "title": "Log in",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Log in",
+    "submitting": "Logging in…",
+    "no_account": "Don't have an account?",
+    "go_register": "Register",
+    "err_invalid": "Invalid username or password"
+  },
+  "register": {
+    "title": "Register",
+    "username": "Username",
+    "username_hint": "(3-50 chars, letters / digits / _-)",
+    "email": "Email",
+    "password": "Password",
+    "password_hint": "(at least 8 chars)",
+    "submit": "Register & log in",
+    "submitting": "Registering…",
+    "have_account": "Already have an account?",
+    "go_login": "Log in",
+    "err_dup": "Username or email already registered",
+    "err_format": "Invalid format (username 3+ chars, password 8+ chars, valid email)"
+  },
+  "time": {
+    "just_now": "just now",
+    "minutes_ago": "{{n}} min ago",
+    "hours_ago": "{{n}} h ago",
+    "days_ago": "{{n}} d ago"
+  }
+}
