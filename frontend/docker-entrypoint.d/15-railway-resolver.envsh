@@ -1,0 +1,11 @@
+#!/bin/sh
+# Export the container's DNS nameserver so nginx can re-resolve the backend's
+# Railway private IP at request time (Railway rotates the IP on every redeploy).
+# The official nginx entrypoint sources *.envsh before 20-envsubst-on-templates,
+# so NGINX_RESOLVER becomes available to the template substitution.
+ns="$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)"
+# Bracket IPv6 addresses for the nginx resolver directive (Railway is IPv6-only).
+case "$ns" in
+  *:*) ns="[$ns]" ;;
+esac
+export NGINX_RESOLVER="${ns:-127.0.0.11}"

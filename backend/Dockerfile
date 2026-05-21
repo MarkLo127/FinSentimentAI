@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Backend image — FastAPI + uv. Reused by both `backend` (uvicorn) and
 # `scheduler` (long-running APScheduler) services in docker-compose.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
@@ -12,8 +13,7 @@ COPY pyproject.toml uv.lock ./
 ENV UV_HTTP_TIMEOUT=120
 
 # Install deps into a project-local .venv (without installing the project itself)
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project
 
 # Add the venv to PATH so subsequent commands find the SDKs
 ENV PATH="/app/.venv/bin:${PATH}" \

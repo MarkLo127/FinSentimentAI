@@ -13,9 +13,15 @@ server {
 
     # API → backend service. ${BACKEND_HOST} is "host:port":
     #   local docker-compose: "backend:8000"
-    #   Railway:              "<backend-service>.railway.internal:8000"
+    #   Railway:              "<backend-service>.railway.internal:8080"
     location /api/ {
-        proxy_pass http://${BACKEND_HOST};
+        # Re-resolve the upstream DNS at request time (valid=10s) so a backend
+        # redeploy — which rotates its Railway private IP — doesn't strand nginx
+        # on a stale cached IP. Requires a variable in proxy_pass to defer
+        # resolution; a literal proxy_pass would resolve once at startup.
+        resolver ${NGINX_RESOLVER} valid=10s;
+        set $upstream_backend ${BACKEND_HOST};
+        proxy_pass http://$upstream_backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

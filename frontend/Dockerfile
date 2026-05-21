@@ -14,6 +14,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # emitting the result into /etc/nginx/conf.d/. The filter limits substitution
 # to PORT and BACKEND_HOST so nginx's own variables ($host, $uri) survive.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
-ENV NGINX_ENVSUBST_FILTER='^(PORT|BACKEND_HOST)$' \
+# 15-railway-resolver.envsh exports NGINX_RESOLVER (read from /etc/resolv.conf)
+# before the stock 20-envsubst-on-templates.sh runs, so the template can bake it in.
+COPY docker-entrypoint.d/ /docker-entrypoint.d/
+RUN chmod +x /docker-entrypoint.d/*.envsh
+ENV NGINX_ENVSUBST_FILTER='^(PORT|BACKEND_HOST|NGINX_RESOLVER)$' \
     PORT=80 \
     BACKEND_HOST=backend:8000
