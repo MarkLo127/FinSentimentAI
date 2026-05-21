@@ -15,7 +15,8 @@
   "nav": {
     "dashboard": "Dashboard",
     "news": "News",
-    "settings": "Settings"
+    "settings": "Settings",
+    "logout": "Log out"
   },
   "language": {
     "label": "Language"
@@ -149,10 +150,10 @@
     "saving": "Saving…",
     "show": "Show",
     "hide": "Hide",
-    "clear_db_title": "Clear DB-stored value; env-provided value will fall back",
-    "saved_hint": "Saved. Scheduler will apply on its next tick.",
-    "security_title": "Security note",
-    "security_body": "This page has no access control; intended for single-machine / local docker compose use. To expose externally, add a JWT auth dependency to routers/admin.py.",
+    "clear_db_title": "Remove this key from your account",
+    "saved_hint": "Saved. Used the next time you refresh a stock.",
+    "security_title": "Your keys are private",
+    "security_body": "These API keys belong to your account only — they're encrypted at rest and never shared with other users. Each refresh you run spends your own keys' quota.",
     "keys": {
       "anthropic": {
         "label": "Anthropic API Key",

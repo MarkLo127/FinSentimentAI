@@ -16,8 +16,10 @@ ENDPOINT = "https://api.marketaux.com/v1/news/all"
 class MarketauxFetcher(BaseFetcher):
     source_name = "marketaux"
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self.api_key = get_settings().marketaux_api_key
+    def __init__(
+        self, client: httpx.AsyncClient | None = None, *, api_key: str | None = None
+    ) -> None:
+        self.api_key = api_key if api_key is not None else get_settings().marketaux_api_key
         self._client = client
 
     async def _get(self) -> httpx.AsyncClient:

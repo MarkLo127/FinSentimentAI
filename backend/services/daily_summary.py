@@ -43,6 +43,7 @@ from models.comment import Comment
 from models.market_summary import MarketSummary
 from models.news import News
 from models.sentiment import SentimentResult
+from models.stock import Stock
 
 CLAUDE = "claude-haiku-4-5"
 
@@ -69,7 +70,7 @@ class StockDayBucket:
 
 
 async def _aggregate_news(
-    session: AsyncSession, target_date: date | None
+    session: AsyncSession, target_date: date | None, user_id: int | None = None
 ) -> dict[tuple[int | None, date], StockDayBucket]:
     """Return {(stock_id, date) → bucket} aggregated over news rows."""
     # Date the article by when *we* fetched it, not when it was published —
@@ -88,6 +89,8 @@ async def _aggregate_news(
     )
     if target_date is not None:
         stmt = stmt.where(pub_date == target_date)
+    if user_id is not None:
+        stmt = stmt.where(News.stock_id.in_(select(Stock.id).where(Stock.user_id == user_id)))
 
     buckets: dict[tuple[int | None, date], StockDayBucket] = {}
     for stock_id, d, label, conf in (await session.execute(stmt)).all():
@@ -108,6 +111,7 @@ async def _aggregate_comments(
     session: AsyncSession,
     target_date: date | None,
     buckets: dict[tuple[int | None, date], StockDayBucket],
+    user_id: int | None = None,
 ) -> dict[tuple[int | None, date], StockDayBucket]:
     pub_date = cast(Comment.fetched_at, DATE).label("d")
     stmt = (
@@ -122,6 +126,8 @@ async def _aggregate_comments(
     )
     if target_date is not None:
         stmt = stmt.where(pub_date == target_date)
+    if user_id is not None:
+        stmt = stmt.where(Comment.stock_id.in_(select(Stock.id).where(Stock.user_id == user_id)))
 
     for stock_id, d, label, conf in (await session.execute(stmt)).all():
         key = (stock_id, d)
@@ -225,16 +231,19 @@ async def _upsert(
     await session.execute(stmt)
 
 
-async def run_for_date(target_date: date | None = None) -> int:
+async def run_for_date(
+    target_date: date | None = None, *, user_id: int | None = None
+) -> int:
     """Compute and UPSERT summaries for every (stock, date) that has data.
 
     Pass ``target_date=None`` to roll up EVERY date present in the data
-    (useful for backfilling history).
+    (useful for backfilling history). Pass ``user_id`` to restrict the rollup
+    to one user's stocks (the on-demand refresh path does this).
     Returns the number of rows upserted.
     """
     async with SessionLocal() as session:
-        buckets = await _aggregate_news(session, target_date)
-        buckets = await _aggregate_comments(session, target_date, buckets)
+        buckets = await _aggregate_news(session, target_date, user_id)
+        buckets = await _aggregate_comments(session, target_date, buckets, user_id)
 
         n = 0
         for bucket in buckets.values():

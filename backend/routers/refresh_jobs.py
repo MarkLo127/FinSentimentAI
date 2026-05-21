@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Iterable
+from typing import Annotated, Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import cast, desc, func, select
@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models.refresh_job import RefreshJob
+from models.user import User
 from schemas.refresh import RefreshJobPublic
+from services.auth import current_user
 
 router = APIRouter(prefix="/api/refresh-jobs", tags=["refresh-jobs"])
 
@@ -26,13 +28,15 @@ async def _annotate_run_numbers(
 
     today_utc = datetime.now(UTC).date()
     symbols = {j.symbol for j in jobs}
+    user_ids = {j.user_id for j in jobs}
 
     # One query per request returns the chronological list of today's job
-    # ids per symbol; we then rank each input job within its list.
+    # ids per symbol (scoped to the same users); we then rank each input job.
     created_date = cast(RefreshJob.created_at, DATE)
     stmt = (
         select(RefreshJob.id, RefreshJob.symbol, RefreshJob.created_at)
         .where(RefreshJob.symbol.in_(symbols))
+        .where(RefreshJob.user_id.in_(user_ids))
         .where(created_date == today_utc)
         .order_by(RefreshJob.symbol, RefreshJob.created_at)
     )
@@ -54,10 +58,16 @@ async def _annotate_run_numbers(
 
 @router.get("/{job_id}", response_model=RefreshJobPublic)
 async def get_refresh_job(
-    job_id: int, db: AsyncSession = Depends(get_db)
+    job_id: int,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
 ) -> RefreshJobPublic:
     job = (
-        await db.execute(select(RefreshJob).where(RefreshJob.id == job_id))
+        await db.execute(
+            select(RefreshJob).where(
+                RefreshJob.id == job_id, RefreshJob.user_id == user.id
+            )
+        )
     ).scalar_one_or_none()
     if job is None:
         raise HTTPException(404, f"Refresh job {job_id} not found")
@@ -67,6 +77,7 @@ async def get_refresh_job(
 
 @router.get("", response_model=list[RefreshJobPublic])
 async def list_refresh_jobs(
+    user: Annotated[User, Depends(current_user)],
     symbol: str | None = Query(None, description="Filter to one symbol"),
     state: str | None = Query(None, description="queued | running | succeeded | failed"),
     active: bool = Query(
@@ -80,7 +91,12 @@ async def list_refresh_jobs(
     after a browser reload (frontend pattern: on mount, call with
     ``symbol=&limit=1`` and if the returned job is still running, poll it).
     Use ``active=true`` for the global indicator strip."""
-    stmt = select(RefreshJob).order_by(desc(RefreshJob.created_at)).limit(limit)
+    stmt = (
+        select(RefreshJob)
+        .where(RefreshJob.user_id == user.id)
+        .order_by(desc(RefreshJob.created_at))
+        .limit(limit)
+    )
     if symbol:
         stmt = stmt.where(RefreshJob.symbol == symbol.upper())
     if active:

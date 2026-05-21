@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +13,9 @@ from models.news import News
 from models.news_translation import NewsTranslation
 from models.sentiment import SentimentResult
 from models.stock import Stock
+from models.user import User
 from schemas.news import NewsDetailResponse, NewsListItem, SentimentSnippet
+from services.auth import current_user
 from services.translator import TranslationError, translate_news
 
 CLAUDE_MODEL_VERSION = "claude-haiku-4-5"
@@ -38,6 +42,7 @@ def _to_snippet(s: SentimentResult | None) -> SentimentSnippet | None:
 
 @router.get("", response_model=list[NewsListItem])
 async def list_news(
+    user: Annotated[User, Depends(current_user)],
     limit: int = Query(20, ge=1, le=100),
     symbol: str | None = Query(None, description="Filter to one stock symbol"),
     q: str | None = Query(None, description="Substring match on title"),
@@ -56,20 +61,25 @@ async def list_news(
         .correlate(News)
         .scalar_subquery()
     )
+    # Restrict to news under this user's own stocks (also excludes orphans
+    # whose stock_id is NULL, since those aren't in the subquery).
+    user_stock_ids = select(Stock.id).where(Stock.user_id == user.id)
     s = aliased(SentimentResult)
     stmt = (
         select(News, s)
         .outerjoin(s, s.id == latest_sentiment_id)
-        # Hide orphan news whose stock was deleted (or was never linked); FK
-        # CASCADE prevents new orphans, but legacy rows linger in the DB.
-        .where(News.stock_id.is_not(None))
+        .where(News.stock_id.in_(user_stock_ids))
         .order_by(desc(News.published_at), desc(News.fetched_at))
         .limit(limit)
     )
     if symbol:
         # Sub-select stock id to keep the join cheap
         stock_id = (
-            await db.execute(select(Stock.id).where(Stock.symbol == symbol.upper()))
+            await db.execute(
+                select(Stock.id).where(
+                    Stock.symbol == symbol.upper(), Stock.user_id == user.id
+                )
+            )
         ).scalar_one_or_none()
         if stock_id is None:
             return []
@@ -82,7 +92,8 @@ async def list_news(
         matching_stock_ids = (
             await db.execute(
                 select(Stock.id).where(
-                    or_(Stock.symbol.ilike(pattern), Stock.name.ilike(pattern))
+                    Stock.user_id == user.id,
+                    or_(Stock.symbol.ilike(pattern), Stock.name.ilike(pattern)),
                 )
             )
         ).scalars().all()
@@ -116,8 +127,18 @@ async def list_news(
 
 
 @router.get("/{news_id}", response_model=NewsDetailResponse)
-async def get_news(news_id: int, db: AsyncSession = Depends(get_db)) -> NewsDetailResponse:
-    news = (await db.execute(select(News).where(News.id == news_id))).scalar_one_or_none()
+async def get_news(
+    news_id: int,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
+) -> NewsDetailResponse:
+    news = (
+        await db.execute(
+            select(News)
+            .join(Stock, Stock.id == News.stock_id)
+            .where(News.id == news_id, Stock.user_id == user.id)
+        )
+    ).scalar_one_or_none()
     if news is None:
         raise HTTPException(404, f"News {news_id} not found")
     sentiment = (
@@ -155,13 +176,27 @@ async def get_news(news_id: int, db: AsyncSession = Depends(get_db)) -> NewsDeta
 
 @router.get("/{news_id}/translation/{lang}")
 async def get_news_translation(
-    news_id: int, lang: str, db: AsyncSession = Depends(get_db)
+    news_id: int,
+    lang: str,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return cached title+body translation for the article into ``lang``;
     populate the cache on first request. Idempotent — concurrent requests
     converge to one DB row via the unique (news_id, target_language) index."""
     if lang not in ("zh-TW", "en"):
         raise HTTPException(422, "lang must be 'zh-TW' or 'en'")
+
+    # Ownership check up front — the article must belong to one of the user's stocks.
+    news = (
+        await db.execute(
+            select(News)
+            .join(Stock, Stock.id == News.stock_id)
+            .where(News.id == news_id, Stock.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if news is None:
+        raise HTTPException(404, f"News {news_id} not found")
 
     cached = (
         await db.execute(
@@ -176,12 +211,6 @@ async def get_news_translation(
             "body": cached.translated_body,
             "cached": True,
         }
-
-    news = (
-        await db.execute(select(News).where(News.id == news_id))
-    ).scalar_one_or_none()
-    if news is None:
-        raise HTTPException(404, f"News {news_id} not found")
 
     try:
         title, body = await translate_news(news, lang)

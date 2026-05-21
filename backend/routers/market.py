@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
@@ -10,16 +11,21 @@ from database import get_db
 from models.market_summary import MarketSummary
 from models.news import News
 from models.stock import Stock
+from models.user import User
 from schemas.market import MarketHistoryPoint, MarketTodayResponse, StockTrendingItem
+from services.auth import current_user
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
 
-async def _aggregate_for_date(db: AsyncSession, target: date) -> MarketHistoryPoint | None:
-    """Aggregate market_summary rows across all stocks for one date.
+def _user_stock_ids(user_id: int):
+    return select(Stock.id).where(Stock.user_id == user_id)
 
-    Excludes orphan rows (stock_id IS NULL) so a fresh / fully-cleared watchlist
-    yields a zero today instead of resurrecting old market-wide summaries."""
+
+async def _aggregate_for_date(
+    db: AsyncSession, target: date, user_id: int
+) -> MarketHistoryPoint | None:
+    """Aggregate market_summary rows across the user's stocks for one date."""
     stmt = (
         select(
             func.coalesce(func.sum(MarketSummary.positive_count), 0).label("pos"),
@@ -33,7 +39,7 @@ async def _aggregate_for_date(db: AsyncSession, target: date) -> MarketHistoryPo
             ).label("score"),
         )
         .where(MarketSummary.summary_date == target)
-        .where(MarketSummary.stock_id.is_not(None))
+        .where(MarketSummary.stock_id.in_(_user_stock_ids(user_id)))
     )
     row = (await db.execute(stmt)).one()
     total = (row.pos or 0) + (row.neg or 0) + (row.neu or 0)
@@ -50,23 +56,26 @@ async def _aggregate_for_date(db: AsyncSession, target: date) -> MarketHistoryPo
 
 
 @router.get("/today", response_model=MarketTodayResponse)
-async def market_today(db: AsyncSession = Depends(get_db)) -> MarketTodayResponse:
+async def market_today(
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
+) -> MarketTodayResponse:
     """Today's overall sentiment + yesterday for change calculation.
 
     Falls back to the most recent two days with data if today/yesterday have none
     (useful out-of-hours or on weekends).
     """
-    # Find the two most-recent distinct dates with any stock-linked summary
+    # Find the two most-recent distinct dates with any of the user's summaries
     dates_stmt = (
         select(MarketSummary.summary_date)
-        .where(MarketSummary.stock_id.is_not(None))
+        .where(MarketSummary.stock_id.in_(_user_stock_ids(user.id)))
         .group_by(MarketSummary.summary_date)
         .order_by(desc(MarketSummary.summary_date))
         .limit(2)
     )
     dates = list((await db.execute(dates_stmt)).scalars().all())
     if not dates:
-        # Empty DB — return a zero today
+        # No data for this user — return a zero today
         today = date.today()
         return MarketTodayResponse(
             today=MarketHistoryPoint(
@@ -81,9 +90,9 @@ async def market_today(db: AsyncSession = Depends(get_db)) -> MarketTodayRespons
             change=None,
         )
 
-    today_point = await _aggregate_for_date(db, dates[0])
+    today_point = await _aggregate_for_date(db, dates[0], user.id)
     yesterday_point = (
-        await _aggregate_for_date(db, dates[1]) if len(dates) > 1 else None
+        await _aggregate_for_date(db, dates[1], user.id) if len(dates) > 1 else None
     )
     change = None
     if today_point and yesterday_point and today_point.sentiment_score is not None and yesterday_point.sentiment_score is not None:
@@ -95,6 +104,7 @@ async def market_today(db: AsyncSession = Depends(get_db)) -> MarketTodayRespons
 
 @router.get("/history", response_model=list[MarketHistoryPoint])
 async def market_history(
+    user: Annotated[User, Depends(current_user)],
     days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
 ) -> list[MarketHistoryPoint]:
@@ -113,7 +123,7 @@ async def market_history(
             ).label("score"),
         )
         .where(MarketSummary.summary_date >= cutoff)
-        .where(MarketSummary.stock_id.is_not(None))
+        .where(MarketSummary.stock_id.in_(_user_stock_ids(user.id)))
         .group_by(MarketSummary.summary_date)
         .order_by(MarketSummary.summary_date)
     )
@@ -135,13 +145,16 @@ async def market_history(
 
 @router.get("/trending", response_model=list[StockTrendingItem])
 async def market_trending(
+    user: Annotated[User, Depends(current_user)],
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[StockTrendingItem]:
-    """Top stocks by absolute sentiment_score on the most-recent available date."""
+    """Top of the user's stocks by absolute sentiment_score on the latest date."""
     latest_date = (
         await db.execute(
-            select(func.max(MarketSummary.summary_date))
+            select(func.max(MarketSummary.summary_date)).where(
+                MarketSummary.stock_id.in_(_user_stock_ids(user.id))
+            )
         )
     ).scalar_one_or_none()
     if latest_date is None:
@@ -174,6 +187,7 @@ async def market_trending(
         .join(Stock, Stock.id == MarketSummary.stock_id)
         .outerjoin(news_count_sq, news_count_sq.c.stock_id == Stock.id)
         .where(MarketSummary.summary_date == latest_date)
+        .where(Stock.user_id == user.id)
         .order_by(desc(func.abs(MarketSummary.sentiment_score)))
         .limit(limit)
     )

@@ -9,7 +9,8 @@ FinSentiment AI: news-driven sentiment dashboard for US + Taiwan equities. The d
 ## Common commands
 
 ```bash
-# Full stack (Postgres + pgAdmin + backend + scheduler + nginx frontend)
+# Full stack (Postgres + pgAdmin + backend + nginx frontend)
+# Analysis is fully on-demand — there is no scheduler container.
 docker compose up -d --build
 # Postgres is exposed on host port 5433 (not 5432) to avoid conflicts.
 
@@ -30,35 +31,33 @@ cd frontend && bun run lint
 cd backend && uv run alembic upgrade head
 cd backend && uv run alembic revision --autogenerate -m "msg"
 
-# One-shot manual ops (all idempotent)
-cd backend && uv run python -m scripts.run_pipeline TSM         # fetch+extract+persist one ticker
-cd backend && uv run python -m scripts.backfill_sentiment       # run Claude over un-analyzed rows
-cd backend && uv run python -m scripts.run_daily_summary        # recompute today's market_summary
-cd backend && uv run python -m scripts.run_scheduler            # foreground APScheduler (what the scheduler container runs)
-cd backend && uv run python -m scripts.seed_stocks              # 10-stock starter seed (off by default)
+# One-shot manual ops (dev CLI; pipeline/backfill now take a user_id since data is per-user)
+cd backend && uv run python -m scripts.run_pipeline <user_id> TSM   # fetch+extract+persist for one user's ticker
+cd backend && uv run python -m scripts.backfill_sentiment           # run Claude over un-analyzed rows (env key)
+cd backend && uv run python -m scripts.run_daily_summary            # recompute today's market_summary
 ```
 
 ## Architecture (the parts that span multiple files)
 
-**Three runtime processes**, all sharing one Postgres:
+**Two runtime processes**, all sharing one Postgres:
 
-1. `backend` — FastAPI + SQLAlchemy 2.0 async. On startup ([backend/main.py](backend/main.py)) it (a) overlays UI-managed settings from `app_settings` table into `os.environ`, (b) reaps stale `running` refresh jobs. Migrations run from the entrypoint when `RUN_MIGRATIONS=1` (backend only; scheduler is `0` to avoid racing).
-2. `scheduler` — separate container running [backend/services/scheduler.py](backend/services/scheduler.py). Three APScheduler jobs, all idempotent: `pipeline_cycle` (30 min) → `sentiment_cycle` (10 min) → `daily_summary` (23:00 UTC). Restart-safe: a crash mid-cycle just leaves work for the next tick.
-3. `frontend` — nginx-served Vite SPA proxying `/api` → backend.
+1. `backend` — FastAPI + SQLAlchemy 2.0 async. On startup ([backend/main.py](backend/main.py)) it reaps stale `running` refresh jobs. Migrations run from the entrypoint when `RUN_MIGRATIONS=1`.
+2. `frontend` — nginx-served Vite SPA proxying `/api` → backend.
+
+**Multi-tenant / per-user isolation (the central invariant).** Every user has their own watchlist, their own news/sentiment/summaries, and their own API keys. The data tables that root this are `stocks` and `refresh_jobs` (both carry `user_id`); `news`/`comments`/`sentiment_results`/`market_summary` inherit isolation through their `stock_id` FK. `news.url_hash` / `comments.url_hash` are unique **per stock** (`uq_news_stock_url_hash`), not globally — the same public article can exist under two users' stocks with independent analysis. Every router filters by `current_user` (login is required on all routes except `/api/auth/*`).
 
 **Two-stage data flow** — pipeline persists raw rows; sentiment is computed by a *separate* job. Do not collapse these into one stage:
 
-- **Pipeline** ([backend/services/pipeline.py](backend/services/pipeline.py)) fans out to 6 fetchers in [backend/services/fetchers/](backend/services/fetchers/) (Marketaux, Finnhub, NewsAPI, AlphaVantage, StockTwits, PTT) in parallel. For news URLs it runs the **3-layer fallback extractor** ([backend/services/content_extractor.py](backend/services/content_extractor.py)): Jina Reader → trafilatura → API-provided snippet, recording which layer won in `news.fetched_via`. Dedupe is by `url_hash` with `ON CONFLICT DO NOTHING` to survive concurrent scheduler/refresh ticks. Alpha Vantage rows that carry a baseline sentiment label get an additional `sentiment_results` row tagged `model_version='alpha_vantage_v1'` — used by `scripts/compare_baselines.py` as ground-truth comparison.
-- **Sentiment** ([backend/services/sentiment_analyzer.py](backend/services/sentiment_analyzer.py)) is invoked by [backend/scripts/backfill_sentiment.py](backend/scripts/backfill_sentiment.py) with concurrency=5 over rows that don't yet have a `model_version='claude-haiku-4-5'` row. The system prompt is **deliberately > 4096 tokens** to meet Haiku 4.5's prompt-cache minimum; the marker is placed via `cache_control={"type": "ephemeral"}` on the system block. Output is the `SentimentAnalysis` pydantic model — 9 fields including bilingual `title_zh`/`title_en`, `key_drivers_zh`/`key_drivers_en`, `reasoning_zh`/`reasoning_en`, plus `is_clickbait` (the 標題殺人 detector). When editing the prompt, **do not drop below 4096 tokens** or the cache discount disappears.
+- **Pipeline** ([backend/services/pipeline.py](backend/services/pipeline.py)) — `run_for_ticker(ticker, *, user_id, keys: UserKeys)` fans out to 6 fetchers in [backend/services/fetchers/](backend/services/fetchers/) (Marketaux, Finnhub, NewsAPI, AlphaVantage, StockTwits, PTT) in parallel, each constructed with the **user's own key**. The 3-layer fallback extractor ([backend/services/content_extractor.py](backend/services/content_extractor.py)) is Jina Reader → trafilatura → snippet, recording the winning layer in `news.fetched_via`. Dedupe is by `(stock_id, url_hash)` with `ON CONFLICT DO NOTHING`. Alpha Vantage baseline rows get a `model_version='alpha_vantage_v1'` `sentiment_results` row.
+- **Sentiment** ([backend/services/sentiment_analyzer.py](backend/services/sentiment_analyzer.py)) — built per-request via `build_analyzer(user_key)` (not the global `get_analyzer()`), invoked by [backend/scripts/backfill_sentiment.py](backend/scripts/backfill_sentiment.py) `run(..., user_id=, anthropic_key=)` over the user's un-analyzed rows. The system prompt is **deliberately > 4096 tokens** to hit Haiku 4.5's prompt-cache minimum (marker via `cache_control={"type":"ephemeral"}`). Output is the `SentimentAnalysis` model with bilingual `title_*`/`key_drivers_*`/`reasoning_*` + `is_clickbait`. **Do not drop the prompt below 4096 tokens.**
 
-**Three triggers for the same pipeline + sentiment work** — they share code paths and dedupe naturally:
-- Scheduler tick → `pipeline_cycle` / `sentiment_cycle`
-- `POST /api/stocks/{symbol}/refresh` → detached `asyncio.create_task` in [backend/services/refresh_runner.py](backend/services/refresh_runner.py) (capped by `Semaphore(2)`), tracked in `refresh_jobs` table, browser polls `/api/refresh-jobs/{id}`
-- Manual CLI: `uv run python -m scripts.run_pipeline TSM`
+**Two triggers for the same pipeline + sentiment work** (no scheduler — analysis is fully on-demand):
+- `POST /api/stocks/{symbol}/refresh` → detached `asyncio.create_task` in [backend/services/refresh_runner.py](backend/services/refresh_runner.py) (capped by `Semaphore(2)`), tracked in `refresh_jobs`, browser polls `/api/refresh-jobs/{id}`. The runner loads the triggering user's keys and threads them through pipeline → backfill → daily_summary.
+- Manual CLI: `uv run python -m scripts.run_pipeline <user_id> TSM`.
 
-**Watchlist is DB-driven, not env-driven.** `scheduler._active_tickers()` reads the `stocks` table — `MONITORED_TICKERS` in env is legacy. Users manage the watchlist via the dashboard's "+ 新增" UI. `SEED_ON_START=0` by default for this reason; flip to `1` only for the 10-stock starter.
+**Watchlist is per-user + DB-driven.** Each user manages their own list via the dashboard "+ 新增" UI; `(user_id, symbol)` is unique. `SEED_ON_START=0`.
 
-**Settings overlay system.** Operator-editable API keys (Anthropic + 4 news + Jina) can be set via `PUT /api/admin/settings` and stored in the `app_settings` table. [backend/services/settings_store.py](backend/services/settings_store.py) `overlay_db_into_env()` is called on backend lifespan startup, after each admin write, AND at the top of every scheduler tick — it mutates `os.environ` and clears the `get_settings` + `get_analyzer` `lru_cache`s so subsequent reads see new values. Only keys in `ALLOWED_KEYS` are honored. Env-set values take precedence is **not** correct here: the DB overlay wins because it's written into `os.environ` directly.
+**Per-user encrypted API keys.** Each user sets their own keys (Anthropic + 4 news + Jina) via `PUT /api/admin/settings` (auth-required, scoped to `current_user`). [backend/services/settings_store.py](backend/services/settings_store.py) stores them in `app_settings` under a composite `(user_id, key)` PK, **Fernet-encrypted** ([backend/services/crypto.py](backend/services/crypto.py), key derived from `SECRET_KEY`). Load them with `get_user_keys(user_id) -> UserKeys`. There is **no fallback to operator env keys** — a user with no key set simply can't fetch/analyze that source (so nobody spends anyone else's quota). Rotating `SECRET_KEY` invalidates all stored keys (users re-enter them).
 
 **Async DB URL normalization** in [backend/database.py](backend/database.py) rewrites `postgres://` / `postgresql://` → `postgresql+asyncpg://` so Railway/Heroku/Supabase-style URLs work without manual edits.
 
@@ -73,4 +72,4 @@ cd backend && uv run python -m scripts.seed_stocks              # 10-stock start
 
 ## API surface
 
-Routes are mounted in [backend/main.py](backend/main.py); each module lives under [backend/routers/](backend/routers/). Auth uses JWT (`Bearer`) via [backend/services/auth.py](backend/services/auth.py); `/api/admin/*` and `/api/refresh-jobs/*` require login. See README.md for the endpoint table.
+Routes are mounted in [backend/main.py](backend/main.py); each module lives under [backend/routers/](backend/routers/). Auth uses JWT (`Bearer`) via [backend/services/auth.py](backend/services/auth.py). **Every route requires login except `/api/auth/*`** (register/login) — stocks, news, market, refresh-jobs, and admin/settings are all scoped to `current_user`. The frontend gates routes with `RequireAuth` ([frontend/src/components/RequireAuth.tsx](frontend/src/components/RequireAuth.tsx)) and bounces to `/login` on any 401. See README.md for the endpoint table.

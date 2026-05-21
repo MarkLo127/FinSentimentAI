@@ -31,6 +31,7 @@ from database import SessionLocal
 from models.refresh_job import RefreshJob
 from services import daily_summary
 from services.pipeline import run_for_ticker
+from services.settings_store import get_user_keys
 from scripts.backfill_sentiment import run as run_backfill
 
 # Cap concurrent refreshes globally so we don't blow Anthropic / Jina rate
@@ -50,8 +51,13 @@ async def _set_state(
     await db.commit()
 
 
-async def run_refresh_job(job_id: int, symbol: str) -> None:
-    """Detached task body — never awaited by the request handler."""
+async def run_refresh_job(job_id: int, symbol: str, user_id: int) -> None:
+    """Detached task body — never awaited by the request handler.
+
+    Loads the triggering user's own API keys and threads them through the
+    whole pipeline → sentiment → summary chain, so the run only ever touches
+    that user's data and spends that user's quota.
+    """
     async with _REFRESH_SEMAPHORE:
         async with SessionLocal() as db:
             try:
@@ -63,8 +69,20 @@ async def run_refresh_job(job_id: int, symbol: str) -> None:
                     started_at=datetime.now(UTC),
                 )
 
+                keys = await get_user_keys(user_id)
+                if not keys.anthropic:
+                    await _set_state(
+                        db,
+                        job_id,
+                        state="failed",
+                        stage=None,
+                        error="missing ANTHROPIC_API_KEY — add it in Settings",
+                        completed_at=datetime.now(UTC),
+                    )
+                    return
+
                 try:
-                    p_stats = await run_for_ticker(symbol)
+                    p_stats = await run_for_ticker(symbol, user_id=user_id, keys=keys)
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("[refresh job {}] pipeline failed", job_id)
                     await _set_state(
@@ -86,7 +104,12 @@ async def run_refresh_job(job_id: int, symbol: str) -> None:
                     new_comments=p_stats.new_comment_rows,
                 )
 
-                s_stats = await run_backfill(limit=None, dry_run=False)
+                s_stats = await run_backfill(
+                    limit=None,
+                    dry_run=False,
+                    user_id=user_id,
+                    anthropic_key=keys.anthropic,
+                )
 
                 await _set_state(
                     db,
@@ -99,7 +122,7 @@ async def run_refresh_job(job_id: int, symbol: str) -> None:
                 today = datetime.now(UTC).date()
                 for d in (today - timedelta(days=1), today):
                     try:
-                        await daily_summary.run_for_date(d)
+                        await daily_summary.run_for_date(d, user_id=user_id)
                     except Exception:  # noqa: BLE001
                         logger.warning("[refresh job {}] daily_summary({}) failed", job_id, d)
 

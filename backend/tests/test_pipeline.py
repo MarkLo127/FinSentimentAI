@@ -23,8 +23,17 @@ from models.comment import Comment  # noqa: E402
 from models.news import News  # noqa: E402
 from models.sentiment import SentimentResult  # noqa: E402
 from models.stock import Stock  # noqa: E402
+from models.user import User  # noqa: E402
 from services.content_extractor import ExtractedContent  # noqa: E402
 from services.fetchers.base import NewsItem, SocialPost  # noqa: E402
+from services.settings_store import UserKeys  # noqa: E402
+
+# Stock/news are now per-user; tests run the pipeline as this fixed user id.
+TEST_USER_ID = 1
+# All fetchers fed with a non-empty key so they don't short-circuit on "missing".
+TEST_KEYS = UserKeys(
+    anthropic="k", marketaux="k", finnhub="k", newsapi="k", alpha_vantage="k", jina="k"
+)
 
 
 def _make_engine():
@@ -49,7 +58,8 @@ async def db_session():
 
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with sessionmaker() as s:
-        s.add(Stock(symbol="TSM", name="TSMC", exchange="NYSE"))
+        s.add(User(id=TEST_USER_ID, username="t", email="t@t.io", password_hash="x"))
+        s.add(Stock(user_id=TEST_USER_ID, symbol="TSM", name="TSMC", exchange="NYSE"))
         await s.commit()
         yield s, engine
     await engine.dispose()
@@ -70,7 +80,7 @@ async def test_pipeline_persists_news_and_dedupes(db_session, monkeypatch):
 
     from services import pipeline as P
 
-    async def _fake_extract(url, fallback_snippet=None, *, client=None):
+    async def _fake_extract(url, fallback_snippet=None, *, client=None, jina_key=None):
         return ExtractedContent(text="full text " * 100, fetched_via="jina", length=1000)
 
     monkeypatch.setattr(P, "fetch_full_content", _fake_extract)
@@ -85,7 +95,7 @@ async def test_pipeline_persists_news_and_dedupes(db_session, monkeypatch):
     for cls in P.SOCIAL_FETCHERS:
         monkeypatch.setattr(cls, "fetch_social", AsyncMock(return_value=[]))
 
-    stats = await P.run_for_ticker("TSM")
+    stats = await P.run_for_ticker("TSM", user_id=TEST_USER_ID, keys=TEST_KEYS)
 
     # 3 items in, 2 unique URLs → 2 inserted, 1 deduped
     assert stats.fetched_news == 3
@@ -114,7 +124,7 @@ async def test_pipeline_persists_alpha_vantage_baseline(db_session, monkeypatch)
         baseline_sentiment_score=0.42,
     )
 
-    async def _fake_extract(url, fallback_snippet=None, *, client=None):
+    async def _fake_extract(url, fallback_snippet=None, *, client=None, jina_key=None):
         return ExtractedContent(text="x" * 1000, fetched_via="jina", length=1000)
 
     monkeypatch.setattr(P, "fetch_full_content", _fake_extract)
@@ -126,7 +136,7 @@ async def test_pipeline_persists_alpha_vantage_baseline(db_session, monkeypatch)
     for cls in P.SOCIAL_FETCHERS:
         monkeypatch.setattr(cls, "fetch_social", AsyncMock(return_value=[]))
 
-    stats = await P.run_for_ticker("TSM")
+    stats = await P.run_for_ticker("TSM", user_id=TEST_USER_ID, keys=TEST_KEYS)
     assert stats.new_news_rows == 1
     assert stats.new_baseline_rows == 1
 
@@ -154,7 +164,7 @@ async def test_pipeline_persists_social_without_extractor(db_session, monkeypatc
 
     extractor_calls = 0
 
-    async def _fake_extract(url, fallback_snippet=None, *, client=None):
+    async def _fake_extract(url, fallback_snippet=None, *, client=None, jina_key=None):
         nonlocal extractor_calls
         extractor_calls += 1
         return ExtractedContent(text="x" * 1000, fetched_via="jina", length=1000)
@@ -168,7 +178,7 @@ async def test_pipeline_persists_social_without_extractor(db_session, monkeypatc
         monkeypatch.setattr(cls, "fetch_social",
                             AsyncMock(return_value=[post] if cls.source_name == "stocktwits" else []))
 
-    stats = await P.run_for_ticker("TSM")
+    stats = await P.run_for_ticker("TSM", user_id=TEST_USER_ID, keys=TEST_KEYS)
     assert stats.new_comment_rows == 1
     assert extractor_calls == 0  # social posts bypass extractor
 

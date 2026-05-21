@@ -16,8 +16,10 @@ ENDPOINT = "https://newsapi.org/v2/everything"
 class NewsApiFetcher(BaseFetcher):
     source_name = "newsapi"
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self.api_key = get_settings().newsapi_key
+    def __init__(
+        self, client: httpx.AsyncClient | None = None, *, api_key: str | None = None
+    ) -> None:
+        self.api_key = api_key if api_key is not None else get_settings().newsapi_key
         self._client = client
 
     async def _get(self) -> httpx.AsyncClient:

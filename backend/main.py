@@ -7,7 +7,6 @@ from loguru import logger
 from config import get_settings
 from routers import admin, auth, market, news, refresh_jobs, stocks
 from services.refresh_runner import reap_stale_jobs
-from services.settings_store import overlay_db_into_env
 
 settings = get_settings()
 
@@ -15,12 +14,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("FinSentiment backend starting")
-    try:
-        n = await overlay_db_into_env()
-        if n:
-            logger.info("overlaid {} setting(s) from DB into env", n)
-    except Exception as exc:  # noqa: BLE001 — DB may not yet have the table on cold start
-        logger.warning("overlay_db_into_env skipped: {}", exc)
+    # API keys are now per-user + encrypted (loaded at refresh time), so there is
+    # no global env overlay any more — each user's keys live in app_settings.
     try:
         reaped = await reap_stale_jobs()
         if reaped:

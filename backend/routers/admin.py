@@ -1,16 +1,19 @@
-"""Operator-facing settings management.
+"""Per-user API-key management.
 
-⚠️ This router is intentionally UN-AUTHENTICATED. The deployment model is
-single-user local dev (Docker on the operator's machine). If you ever expose
-this beyond localhost, put it behind the JWT-protected ``current_user``
-dependency.
+Each authenticated user manages their OWN keys here — the endpoints are
+scoped to ``current_user`` and operate on that user's encrypted rows in
+``app_settings``. (Path prefix kept as /api/admin for frontend compatibility.)
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from models.user import User
+from services.auth import current_user
 from services.settings_store import (
     ALLOWED_KEYS,
     delete_setting,
@@ -34,21 +37,26 @@ class SettingUpdate(BaseModel):
 
 
 @router.get("/settings", response_model=list[SettingStatus])
-async def get_settings_status() -> list[dict]:
-    return await list_settings_status()
+async def get_settings_status(
+    user: Annotated[User, Depends(current_user)],
+) -> list[dict]:
+    return await list_settings_status(user.id)
 
 
 @router.put("/settings/{key}", response_model=SettingStatus)
-async def put_setting(key: str, payload: SettingUpdate) -> dict:
+async def put_setting(
+    key: str,
+    payload: SettingUpdate,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
     key = key.upper()
     if key not in ALLOWED_KEYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown key: {key}")
     try:
-        await set_setting(key, payload.value)
+        await set_setting(user.id, key, payload.value)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
-    # Return the new status row
-    all_status = await list_settings_status()
+    all_status = await list_settings_status(user.id)
     for row in all_status:
         if row["key"] == key:
             return row
@@ -56,8 +64,11 @@ async def put_setting(key: str, payload: SettingUpdate) -> dict:
 
 
 @router.delete("/settings/{key}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_setting_endpoint(key: str) -> None:
+async def delete_setting_endpoint(
+    key: str,
+    user: Annotated[User, Depends(current_user)],
+) -> None:
     key = key.upper()
     if key not in ALLOWED_KEYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown key: {key}")
-    await delete_setting(key)
+    await delete_setting(user.id, key)

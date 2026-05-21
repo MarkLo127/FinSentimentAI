@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, or_, select
@@ -15,8 +16,10 @@ from models.news import News
 from models.refresh_job import RefreshJob
 from models.sentiment import SentimentResult
 from models.stock import Stock
+from models.user import User
 from schemas.refresh import RefreshJobPublic, StockCreate, StockImpact
 from schemas.stock import StockDetailResponse, StockListItem, StockSentimentPoint
+from services.auth import current_user
 from services.refresh_runner import run_refresh_job
 from services.stock_lookup import lookup_stock_profile
 
@@ -25,11 +28,12 @@ router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 
 @router.get("", response_model=list[StockListItem])
 async def list_stocks(
+    user: Annotated[User, Depends(current_user)],
     q: str | None = Query(None, description="Fuzzy match on symbol or name"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ) -> list[Stock]:
-    stmt = select(Stock).order_by(Stock.id).limit(limit)
+    stmt = select(Stock).where(Stock.user_id == user.id).order_by(Stock.id).limit(limit)
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(or_(Stock.symbol.ilike(pattern), Stock.name.ilike(pattern)))
@@ -39,7 +43,9 @@ async def list_stocks(
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=StockListItem)
 async def create_stock(
-    payload: StockCreate, db: AsyncSession = Depends(get_db)
+    payload: StockCreate,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
 ) -> Stock:
     symbol = payload.symbol.strip().upper()
     if not symbol or not symbol.replace("_", "").isalnum():
@@ -60,6 +66,7 @@ async def create_stock(
         sector = sector or profile.get("sector")
 
     stock = Stock(
+        user_id=user.id,
         symbol=symbol,
         name=name,
         exchange=exchange,
@@ -76,10 +83,16 @@ async def create_stock(
 
 
 @router.get("/{symbol}/impact", response_model=StockImpact)
-async def stock_impact(symbol: str, db: AsyncSession = Depends(get_db)) -> StockImpact:
+async def stock_impact(
+    symbol: str,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
+) -> StockImpact:
     """Pre-delete impact report — counts rows that hard-delete will touch."""
     stock = (
-        await db.execute(select(Stock).where(Stock.symbol == symbol.upper()))
+        await db.execute(
+            select(Stock).where(Stock.symbol == symbol.upper(), Stock.user_id == user.id)
+        )
     ).scalar_one_or_none()
     if stock is None:
         raise HTTPException(404, f"Stock {symbol} not found")
@@ -117,14 +130,20 @@ async def stock_impact(symbol: str, db: AsyncSession = Depends(get_db)) -> Stock
 
 
 @router.delete("/{symbol}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_stock(symbol: str, db: AsyncSession = Depends(get_db)) -> None:
+async def delete_stock(
+    symbol: str,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
+) -> None:
     """Hard delete: removes the stock + all related news, comments, sentiment,
     and market_summary rows. ``ON DELETE CASCADE`` on sentiment_results.news_id
     + sentiment_results.comment_id handles the analyses; market_summary CASCADEs
     on stock_id directly. We explicitly DELETE news + comments first so the
     SET-NULL FK from sentiment.stock_id doesn't leave dangling rows."""
     stock = (
-        await db.execute(select(Stock).where(Stock.symbol == symbol.upper()))
+        await db.execute(
+            select(Stock).where(Stock.symbol == symbol.upper(), Stock.user_id == user.id)
+        )
     ).scalar_one_or_none()
     if stock is None:
         raise HTTPException(404, f"Stock {symbol} not found")
@@ -145,11 +164,14 @@ async def delete_stock(symbol: str, db: AsyncSession = Depends(get_db)) -> None:
 @router.get("/{symbol}", response_model=StockDetailResponse)
 async def get_stock(
     symbol: str,
+    user: Annotated[User, Depends(current_user)],
     days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
 ) -> StockDetailResponse:
     stock = (
-        await db.execute(select(Stock).where(Stock.symbol == symbol.upper()))
+        await db.execute(
+            select(Stock).where(Stock.symbol == symbol.upper(), Stock.user_id == user.id)
+        )
     ).scalar_one_or_none()
     if stock is None:
         raise HTTPException(404, f"Stock {symbol} not found")
@@ -191,7 +213,9 @@ async def get_stock(
     response_model=RefreshJobPublic,
 )
 async def refresh_stock(
-    symbol: str, db: AsyncSession = Depends(get_db)
+    symbol: str,
+    user: Annotated[User, Depends(current_user)],
+    db: AsyncSession = Depends(get_db),
 ) -> RefreshJobPublic:
     """Kick off an on-demand pipeline+sentiment+summary run in the background.
 
@@ -204,16 +228,19 @@ async def refresh_stock(
 
     symbol = symbol.upper()
     stock = (
-        await db.execute(select(Stock).where(Stock.symbol == symbol))
+        await db.execute(
+            select(Stock).where(Stock.symbol == symbol, Stock.user_id == user.id)
+        )
     ).scalar_one_or_none()
     if stock is None:
         raise HTTPException(404, f"Stock {symbol} not found in watchlist")
 
-    # De-dupe: if a job for this symbol is already queued/running, return it.
+    # De-dupe: if a job for this user+symbol is already queued/running, return it.
     existing = (
         await db.execute(
             select(RefreshJob)
             .where(RefreshJob.symbol == symbol)
+            .where(RefreshJob.user_id == user.id)
             .where(RefreshJob.state.in_(("queued", "running")))
             .order_by(RefreshJob.created_at.desc())
             .limit(1)
@@ -223,12 +250,12 @@ async def refresh_stock(
     if existing is not None:
         target_job = existing
     else:
-        target_job = RefreshJob(symbol=symbol, state="queued")
+        target_job = RefreshJob(symbol=symbol, state="queued", user_id=user.id)
         db.add(target_job)
         await db.commit()
         await db.refresh(target_job)
         # Detach from the request — survives the HTTP response returning.
-        asyncio.create_task(run_refresh_job(target_job.id, symbol))
+        asyncio.create_task(run_refresh_job(target_job.id, symbol, user.id))
 
     # Compute today_run_number for the response.
     today_utc = _dt.now(UTC).date()
@@ -236,6 +263,7 @@ async def refresh_stock(
         await db.execute(
             select(_func.count(RefreshJob.id))
             .where(RefreshJob.symbol == symbol)
+            .where(RefreshJob.user_id == user.id)
             .where(_cast(RefreshJob.created_at, _DATE) == today_utc)
             .where(RefreshJob.created_at <= target_job.created_at)
         )

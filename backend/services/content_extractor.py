@@ -85,20 +85,25 @@ async def fetch_full_content(
     fallback_snippet: str | None = None,
     *,
     client: httpx.AsyncClient | None = None,
+    jina_key: str | None = None,
 ) -> ExtractedContent:
     """Extract clean full-text from a news URL using three-layer fallback.
 
     Always returns an ExtractedContent — never raises. The caller persists
     ``fetched_via`` so the frontend can flag snippet-fallback rows.
+
+    ``jina_key`` is the per-user Jina Reader key; when None, falls back to the
+    global env key (used by CLI/smoke scripts). Jina works without a key too —
+    just at a lower rate limit.
     """
-    settings = get_settings()
+    resolved_jina = jina_key if jina_key is not None else get_settings().jina_api_key
     owns_client = client is None
     client = client or httpx.AsyncClient(follow_redirects=True)
 
     try:
         # Layer 1: Jina Reader
         try:
-            text = await _try_jina(client, url, settings.jina_api_key)
+            text = await _try_jina(client, url, resolved_jina)
             if text and len(text) >= MIN_CONTENT_CHARS:
                 return ExtractedContent(text=text, fetched_via="jina", length=len(text))
         except Exception as exc:  # noqa: BLE001

@@ -772,3 +772,14 @@ def get_analyzer() -> SentimentAnalyzer:
     if not s.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set; cannot analyze sentiment")
     return SentimentAnalyzer(api_key=s.anthropic_api_key, model=s.anthropic_model)
+
+
+def build_analyzer(api_key: str) -> SentimentAnalyzer:
+    """Per-user analyzer: built from the caller's own Anthropic key (model
+    name stays global config). Used by the on-demand refresh flow so one user
+    never spends another's Claude quota."""
+    if not api_key:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY not set for this user; add it in Settings to analyze sentiment"
+        )
+    return SentimentAnalyzer(api_key=api_key, model=get_settings().anthropic_model)

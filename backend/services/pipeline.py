@@ -43,6 +43,7 @@ from services.fetchers.marketaux import MarketauxFetcher
 from services.fetchers.newsapi import NewsApiFetcher
 from services.fetchers.ptt import PttFetcher
 from services.fetchers.stocktwits import StockTwitsFetcher
+from services.settings_store import UserKeys
 
 NEWS_FETCHERS: list[type[BaseFetcher]] = [
     MarketauxFetcher,
@@ -76,9 +77,18 @@ class PipelineStats:
         logger.info("=" * 60)
 
 
-async def _fetch_all_news(ticker: str) -> list[NewsItem]:
+async def _fetch_all_news(ticker: str, keys: UserKeys) -> list[NewsItem]:
+    # Each news fetcher gets the user's own key for its source; a fetcher with
+    # a blank key logs a warning and returns [] (see fetcher.fetch_news).
+    key_for = {
+        "marketaux": keys.marketaux,
+        "finnhub": keys.finnhub,
+        "newsapi": keys.newsapi,
+        "alpha_vantage": keys.alpha_vantage,
+    }
+    news_fetchers = [cls(api_key=key_for[cls.source_name]) for cls in NEWS_FETCHERS]
     results = await asyncio.gather(
-        *(cls().fetch_news(ticker) for cls in NEWS_FETCHERS),
+        *(f.fetch_news(ticker) for f in news_fetchers),
         return_exceptions=True,
     )
     items: list[NewsItem] = []
@@ -104,23 +114,35 @@ async def _fetch_all_social(ticker: str) -> list[SocialPost]:
     return posts
 
 
-async def _get_stock_id(session: AsyncSession, ticker: str) -> int | None:
-    row = await session.execute(select(Stock.id).where(Stock.symbol == ticker))
+async def _get_stock_id(session: AsyncSession, ticker: str, user_id: int) -> int | None:
+    row = await session.execute(
+        select(Stock.id).where(Stock.symbol == ticker, Stock.user_id == user_id)
+    )
     return row.scalar_one_or_none()
 
 
-async def _existing_news_hashes(session: AsyncSession, hashes: list[str]) -> set[str]:
-    if not hashes:
-        return set()
-    rows = await session.execute(select(News.url_hash).where(News.url_hash.in_(hashes)))
-    return set(rows.scalars().all())
-
-
-async def _existing_comment_hashes(session: AsyncSession, hashes: list[str]) -> set[str]:
+async def _existing_news_hashes(
+    session: AsyncSession, hashes: list[str], stock_id: int | None
+) -> set[str]:
     if not hashes:
         return set()
     rows = await session.execute(
-        select(Comment.url_hash).where(Comment.url_hash.in_(hashes))
+        select(News.url_hash)
+        .where(News.url_hash.in_(hashes))
+        .where(News.stock_id == stock_id)
+    )
+    return set(rows.scalars().all())
+
+
+async def _existing_comment_hashes(
+    session: AsyncSession, hashes: list[str], stock_id: int | None
+) -> set[str]:
+    if not hashes:
+        return set()
+    rows = await session.execute(
+        select(Comment.url_hash)
+        .where(Comment.url_hash.in_(hashes))
+        .where(Comment.stock_id == stock_id)
     )
     return set(rows.scalars().all())
 
@@ -131,8 +153,10 @@ async def _persist_news(
     stock_id: int | None,
     stats: PipelineStats,
     client: httpx.AsyncClient,
+    jina_key: str,
 ) -> list[tuple[NewsItem, int]]:
-    # Dedupe within batch and against DB
+    # Dedupe within batch and against DB (scoped to this stock — the same
+    # url_hash may legitimately exist under a different user's stock).
     by_hash: dict[str, NewsItem] = {}
     for item in items:
         if not item.url:
@@ -140,14 +164,14 @@ async def _persist_news(
         by_hash.setdefault(item.url_hash, item)
     stats.skipped_duplicates += len(items) - len(by_hash)
 
-    existing = await _existing_news_hashes(session, list(by_hash))
+    existing = await _existing_news_hashes(session, list(by_hash), stock_id)
     new_items = [it for h, it in by_hash.items() if h not in existing]
     stats.skipped_duplicates += len(existing)
 
     inserted: list[tuple[NewsItem, int]] = []
     for item in new_items:
         extracted = await fetch_full_content(
-            item.url, fallback_snippet=item.summary, client=client
+            item.url, fallback_snippet=item.summary, client=client, jina_key=jina_key
         )
         if extracted.fetched_via == "jina":
             stats.via_jina += 1
@@ -175,7 +199,7 @@ async def _persist_news(
                 content_length=extracted.length or None,
                 published_at=item.published_at,
             )
-            .on_conflict_do_nothing(index_elements=["url_hash"])
+            .on_conflict_do_nothing(index_elements=["stock_id", "url_hash"])
             .returning(News.id)
         )
         new_id = (await session.execute(stmt)).scalar_one_or_none()
@@ -224,7 +248,7 @@ async def _persist_social(
         by_hash.setdefault(p.url_hash, p)
     stats.skipped_duplicates += len(posts) - len(by_hash)
 
-    existing = await _existing_comment_hashes(session, list(by_hash))
+    existing = await _existing_comment_hashes(session, list(by_hash), stock_id)
     new_posts = [p for h, p in by_hash.items() if h not in existing]
     stats.skipped_duplicates += len(existing)
 
@@ -243,7 +267,7 @@ async def _persist_social(
                 platform_metadata=post.platform_metadata or None,
                 published_at=post.published_at,
             )
-            .on_conflict_do_nothing(index_elements=["url_hash"])
+            .on_conflict_do_nothing(index_elements=["stock_id", "url_hash"])
             .returning(Comment.id)
         )
         result = await session.execute(stmt)
@@ -251,10 +275,10 @@ async def _persist_social(
             stats.new_comment_rows += 1
 
 
-async def run_for_ticker(ticker: str) -> PipelineStats:
+async def run_for_ticker(ticker: str, *, user_id: int, keys: UserKeys) -> PipelineStats:
     stats = PipelineStats()
 
-    news_task = _fetch_all_news(ticker)
+    news_task = _fetch_all_news(ticker, keys)
     social_task = _fetch_all_social(ticker)
     news_items, social_posts = await asyncio.gather(news_task, social_task)
     stats.fetched_news = len(news_items)
@@ -265,12 +289,16 @@ async def run_for_ticker(ticker: str) -> PipelineStats:
 
     async with httpx.AsyncClient(follow_redirects=True) as http_client:
         async with SessionLocal() as session:
-            stock_id = await _get_stock_id(session, ticker)
+            stock_id = await _get_stock_id(session, ticker, user_id)
             if stock_id is None:
-                logger.warning("ticker {} not in stocks table — rows will have NULL stock_id", ticker)
+                logger.warning(
+                    "ticker {} not in user {}'s watchlist — rows will have NULL stock_id",
+                    ticker,
+                    user_id,
+                )
 
             inserted = await _persist_news(
-                session, news_items, stock_id, stats, http_client
+                session, news_items, stock_id, stats, http_client, keys.jina
             )
             await _persist_baselines(session, inserted, stock_id, stats)
             await _persist_social(session, social_posts, stock_id, stats)

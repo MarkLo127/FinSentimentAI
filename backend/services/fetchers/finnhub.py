@@ -16,8 +16,14 @@ ENDPOINT = "https://finnhub.io/api/v1/company-news"
 class FinnhubFetcher(BaseFetcher):
     source_name = "finnhub"
 
-    def __init__(self, client: httpx.AsyncClient | None = None, days_back: int = 7) -> None:
-        self.api_key = get_settings().finnhub_api_key
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        days_back: int = 7,
+        *,
+        api_key: str | None = None,
+    ) -> None:
+        self.api_key = api_key if api_key is not None else get_settings().finnhub_api_key
         self.days_back = days_back
         self._client = client
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -14,14 +14,20 @@ FETCHED_VIA = ("jina", "trafilatura", "snippet")
 
 class News(Base):
     __tablename__ = "news"
+    # url_hash is unique *per stock* (i.e. per user, since stocks are per-user):
+    # the same public article can legitimately exist under two different users'
+    # watchlist stocks, each with its own independent sentiment analysis.
+    __table_args__ = (
+        UniqueConstraint("stock_id", "url_hash", name="uq_news_stock_url_hash"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     stock_id: Mapped[int | None] = mapped_column(
         ForeignKey("stocks.id", ondelete="SET NULL"), index=True, nullable=True
     )
     title: Mapped[str] = mapped_column(Text)
-    url: Mapped[str] = mapped_column(Text, unique=True)
-    url_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    url: Mapped[str] = mapped_column(Text)
+    url_hash: Mapped[str] = mapped_column(String(64), index=True)
     source: Mapped[str] = mapped_column(String(20))  # marketaux | finnhub | newsapi | alpha_vantage
     language: Mapped[str] = mapped_column(String(10), default="en")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)

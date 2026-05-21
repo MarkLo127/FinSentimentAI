@@ -32,7 +32,8 @@ from database import SessionLocal
 from models.comment import Comment
 from models.news import News
 from models.sentiment import SentimentResult
-from services.sentiment_analyzer import SentimentAnalyzer, get_analyzer
+from models.stock import Stock
+from services.sentiment_analyzer import SentimentAnalyzer, build_analyzer, get_analyzer
 
 CLAUDE_MODEL_VERSION = "claude-haiku-4-5"
 CONCURRENCY = 5
@@ -82,9 +83,14 @@ class BackfillStats:
 
 
 async def _pending_news(
-    session: AsyncSession, limit: int | None, force: bool
+    session: AsyncSession, limit: int | None, force: bool, user_id: int | None
 ) -> list[News]:
     stmt = select(News).where(News.full_content.isnot(None)).order_by(News.id)
+    if user_id is not None:
+        # Only this user's news (their stocks). Keeps one user's refresh from
+        # spending their Claude key on another user's unanalyzed rows.
+        owned = select(Stock.id).where(Stock.user_id == user_id)
+        stmt = stmt.where(News.stock_id.in_(owned))
     if not force:
         # Default: only fetch rows that don't yet have a Claude analysis
         has_claude = (
@@ -99,9 +105,12 @@ async def _pending_news(
 
 
 async def _pending_comments(
-    session: AsyncSession, limit: int | None, force: bool
+    session: AsyncSession, limit: int | None, force: bool, user_id: int | None
 ) -> list[Comment]:
     stmt = select(Comment).order_by(Comment.id)
+    if user_id is not None:
+        owned = select(Stock.id).where(Stock.user_id == user_id)
+        stmt = stmt.where(Comment.stock_id.in_(owned))
     if not force:
         has_claude = (
             select(SentimentResult.id)
@@ -255,14 +264,22 @@ async def _analyze_comment(
             )
 
 
-async def run(*, limit: int | None, dry_run: bool, force: bool = False) -> BackfillStats:
+async def run(
+    *,
+    limit: int | None,
+    dry_run: bool,
+    force: bool = False,
+    user_id: int | None = None,
+    anthropic_key: str | None = None,
+) -> BackfillStats:
     stats = BackfillStats()
-    analyzer = get_analyzer()
+    # Per-user flow passes the user's own key; CLI/global flow falls back to env.
+    analyzer = build_analyzer(anthropic_key) if anthropic_key is not None else get_analyzer()
     sem = asyncio.Semaphore(CONCURRENCY)
 
     async with SessionLocal() as session:
-        pending_news = await _pending_news(session, limit, force)
-        pending_comments = await _pending_comments(session, limit, force)
+        pending_news = await _pending_news(session, limit, force, user_id)
+        pending_comments = await _pending_comments(session, limit, force, user_id)
         stats.news_total = len(pending_news)
         stats.comment_total = len(pending_comments)
 

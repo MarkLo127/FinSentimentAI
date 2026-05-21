@@ -15,7 +15,8 @@
   "nav": {
     "dashboard": "儀表板",
     "news": "新聞",
-    "settings": "設定"
+    "settings": "設定",
+    "logout": "登出"
   },
   "language": {
     "label": "語言"
@@ -149,10 +150,10 @@
     "saving": "存…",
     "show": "顯示",
     "hide": "隱藏",
-    "clear_db_title": "清除 DB 中的值；env 設的會 fallback 回來",
-    "saved_hint": "已存檔，scheduler 下次 tick 自動套用。",
-    "security_title": "安全提醒",
-    "security_body": "此頁面未做存取控制，預期為單機 / 本機 docker compose 部署使用。若要對外開放，請先在 routers/admin.py 加 JWT auth dependency。",
+    "clear_db_title": "從你的帳號移除這把金鑰",
+    "saved_hint": "已存檔，下次手動更新個股時就會用到。",
+    "security_title": "你的金鑰是私有的",
+    "security_body": "這些 API 金鑰只屬於你的帳號，加密儲存、不會與其他使用者共用。你每次觸發分析都是消耗自己金鑰的額度。",
     "keys": {
       "anthropic": {
         "label": "Anthropic API Key",

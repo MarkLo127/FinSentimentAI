@@ -7,8 +7,8 @@
 #   pgAdmin:   http://localhost:5050   (admin@local.dev / admin)
 #   Postgres:  localhost:5433          (in-container 5432; remapped to avoid host 5432 conflicts)
 #
-# The `scheduler` service runs APScheduler in the foreground — periodically
-# pulling fetchers → sentiment → daily_summary on the intervals from .env.
+# Analysis is fully on-demand: each user adds their own API keys in /settings
+# and triggers a refresh per stock (no background scheduler).
 
 x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finsentiment}:${POSTGRES_PASSWORD:-finsentiment_dev}@postgres:5432/${POSTGRES_DB:-finsentiment}
@@ -82,23 +82,8 @@ services:
       - "8000:8000"
     restart: unless-stopped
 
-  scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: finsentiment-scheduler
-    command: ["python", "-m", "scripts.run_scheduler"]
-    environment:
-      <<: *backend-env
-      # Backend container already migrates + seeds — scheduler should not race
-      RUN_MIGRATIONS: "0"
-      SEED_ON_START: "0"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      backend:
-        condition: service_started
-    restart: unless-stopped
+  # NOTE: the background scheduler was removed — analysis is now fully
+  # on-demand (each user triggers a refresh with their own API keys).
 
   frontend:
     build:

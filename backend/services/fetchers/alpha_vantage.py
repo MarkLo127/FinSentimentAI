@@ -33,8 +33,14 @@ class AlphaVantageFetcher(BaseFetcher):
 
     source_name = "alpha_vantage"
 
-    def __init__(self, client: httpx.AsyncClient | None = None, limit: int = 15) -> None:
-        self.api_key = get_settings().alpha_vantage_key
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        limit: int = 15,
+        *,
+        api_key: str | None = None,
+    ) -> None:
+        self.api_key = api_key if api_key is not None else get_settings().alpha_vantage_key
         self.limit = limit
         self._client = client
 

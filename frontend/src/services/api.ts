@@ -34,6 +34,23 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// On 401 (expired/invalid token mid-session) drop the token and bounce to login.
+// Skip the login call itself so bad credentials don't trigger a redirect loop.
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status
+    const url: string = error?.config?.url ?? ''
+    if (status === 401 && !url.includes('/auth/login')) {
+      localStorage.removeItem(TOKEN_KEY)
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
 // ─── Stocks ────────────────────────────────────────────────────────────────
 export interface ListStocksParams {
   q?: string
