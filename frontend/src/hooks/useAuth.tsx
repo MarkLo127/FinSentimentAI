@@ -1,5 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { getMe, googleLogin as apiGoogleLogin, TOKEN_KEY } from '../services/api'
 import type { UserPublic } from '../types/api'
 
@@ -13,9 +21,27 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function readToken(): string | null {
+  return typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
-  const hasToken = typeof window !== 'undefined' && !!localStorage.getItem(TOKEN_KEY)
+  // Track the token in React state so writes from loginWithGoogle / logout —
+  // and 401-driven clears from the axios interceptor — re-render this provider
+  // (which sits OUTSIDE RouterProvider, so router navigation alone doesn't).
+  const [token, setToken] = useState<string | null>(() => readToken())
+  const hasToken = !!token
+
+  // Stay in sync with localStorage edits from other tabs OR the response
+  // interceptor's hard-clear path on 401.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === TOKEN_KEY) setToken(e.newValue)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const meQ = useQuery({
     queryKey: ['auth', 'me'],
@@ -25,15 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   })
 
-  // If /me 401s, clear the bad token so the UI shows logged-out state
-  if (meQ.isError && hasToken) {
-    localStorage.removeItem(TOKEN_KEY)
-  }
+  // If /me 401s, drop the bad token so the UI flips to logged-out.
+  useEffect(() => {
+    if (meQ.isError && hasToken) {
+      localStorage.removeItem(TOKEN_KEY)
+      setToken(null)
+    }
+  }, [meQ.isError, hasToken])
 
   const loginWithGoogle = useCallback(
     async (credential: string) => {
       const tok = await apiGoogleLogin(credential)
       localStorage.setItem(TOKEN_KEY, tok.access_token)
+      setToken(tok.access_token)
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] })
     },
     [qc],
@@ -41,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
+    setToken(null)
     qc.removeQueries({ queryKey: ['auth', 'me'] })
     qc.setQueryData(['auth', 'me'], null)
   }, [qc])
