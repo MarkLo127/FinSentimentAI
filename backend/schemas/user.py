@@ -2,18 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-class UserRegister(BaseModel):
-    username: str = Field(min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_-]+$")
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+class GoogleAuthRequest(BaseModel):
+    """ID token JWT issued by Google Identity Services, posted from the SPA."""
 
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
+    credential: str
 
 
 class UserPublic(BaseModel):

@@ -6,7 +6,7 @@ from .market import (
 from .news import NewsDetailResponse, NewsListItem, SentimentSnippet
 from .refresh import RefreshJobPublic, StockCreate, StockImpact
 from .stock import StockDetailResponse, StockListItem
-from .user import Token, UserLogin, UserPublic, UserRegister
+from .user import GoogleAuthRequest, Token, UserPublic
 
 __all__ = [
     "StockListItem",
@@ -17,8 +17,7 @@ __all__ = [
     "NewsListItem",
     "NewsDetailResponse",
     "SentimentSnippet",
-    "UserRegister",
-    "UserLogin",
+    "GoogleAuthRequest",
     "UserPublic",
     "Token",
     "RefreshJobPublic",

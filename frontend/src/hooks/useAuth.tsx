@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react'
-import { getMe, login as apiLogin, TOKEN_KEY } from '../services/api'
-import type { LoginPayload, UserPublic } from '../types/api'
+import { getMe, googleLogin as apiGoogleLogin, TOKEN_KEY } from '../services/api'
+import type { UserPublic } from '../types/api'
 
 interface AuthContextValue {
   user: UserPublic | null
   isLoading: boolean
-  login: (payload: LoginPayload) => Promise<void>
+  /** Exchange a Google ID-token credential for our app JWT and persist it. */
+  loginWithGoogle: (credential: string) => Promise<void>
   logout: () => void
 }
 
@@ -29,9 +30,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  const login = useCallback(
-    async (payload: LoginPayload) => {
-      const tok = await apiLogin(payload)
+  const loginWithGoogle = useCallback(
+    async (credential: string) => {
+      const tok = await apiGoogleLogin(credential)
       localStorage.setItem(TOKEN_KEY, tok.access_token)
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] })
     },
@@ -48,10 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user: meQ.isError ? null : (meQ.data ?? null),
       isLoading: hasToken && meQ.isLoading,
-      login,
+      loginWithGoogle,
       logout,
     }),
-    [hasToken, meQ.data, meQ.isError, meQ.isLoading, login, logout],
+    [hasToken, meQ.data, meQ.isError, meQ.isLoading, loginWithGoogle, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

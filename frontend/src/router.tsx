@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import RequireAuth from './components/RequireAuth'
 import Dashboard from './pages/Dashboard'
@@ -6,16 +6,15 @@ import StockDetail from './pages/StockDetail'
 import NewsList from './pages/NewsList'
 import NewsDetail from './pages/NewsDetail'
 import Login from './pages/Login'
-import Register from './pages/Register'
 import Settings from './pages/Settings'
 
 export const router = createBrowserRouter([
   {
     element: <Layout />,
     children: [
-      // Public
+      // Public — Google-only auth, no separate registration page
       { path: '/login', element: <Login /> },
-      { path: '/register', element: <Register /> },
+      { path: '/register', element: <Navigate to="/login" replace /> },
       // Everything else requires a logged-in user (per-user isolation)
       {
         element: <RequireAuth />,

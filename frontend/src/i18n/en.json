@@ -213,28 +213,12 @@
     "deleting": "Deleting…"
   },
   "login": {
-    "title": "Log in",
-    "username": "Username",
-    "password": "Password",
-    "submit": "Log in",
-    "submitting": "Logging in…",
-    "no_account": "Don't have an account?",
-    "go_register": "Register",
-    "err_invalid": "Invalid username or password"
-  },
-  "register": {
-    "title": "Register",
-    "username": "Username",
-    "username_hint": "(3-50 chars, letters / digits / _-)",
-    "email": "Email",
-    "password": "Password",
-    "password_hint": "(at least 8 chars)",
-    "submit": "Register & log in",
-    "submitting": "Registering…",
-    "have_account": "Already have an account?",
-    "go_login": "Log in",
-    "err_dup": "Username or email already registered",
-    "err_format": "Invalid format (username 3+ chars, password 8+ chars, valid email)"
+    "title": "Sign in to FinSentiment AI",
+    "subtitle": "Use your Google account to sign in or sign up — each user gets their own watchlist and API keys.",
+    "google_button": "Continue with Google",
+    "signing_in": "Signing in…",
+    "err_google": "Google sign-in failed, please try again",
+    "err_unconfigured": "Google Client ID is not configured (VITE_GOOGLE_CLIENT_ID)"
   },
   "time": {
     "just_now": "just now",

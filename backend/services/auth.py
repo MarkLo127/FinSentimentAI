@@ -1,4 +1,4 @@
-"""Password hashing + JWT issuing/parsing."""
+"""JWT issuing/parsing for Google-sign-in-only auth."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,19 +15,7 @@ from config import get_settings
 from database import get_db
 from models.user import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
-
-
-def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    try:
-        return pwd_context.verify(plain, hashed)
-    except Exception:  # noqa: BLE001 — broken hash etc.
-        return False
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/google", auto_error=False)
 
 
 def create_access_token(*, sub: str) -> tuple[str, int]:

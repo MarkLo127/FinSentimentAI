@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
 
+    # Google Sign-In. The Client ID is a public identifier (safe to ship to the
+    # frontend); we still verify ID tokens server-side against it.
+    google_client_id: str = ""
+
     news_fetch_interval_minutes: int = 30
     social_fetch_interval_minutes: int = 60
     daily_summary_hour: int = 23

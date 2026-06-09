@@ -1,13 +1,11 @@
 import axios from 'axios'
 import type {
   AuthToken,
-  LoginPayload,
   MarketHistoryPoint,
   MarketTodayResponse,
   NewsDetail,
   NewsListItem,
   RefreshJob,
-  RegisterPayload,
   SettingStatus,
   Stock,
   StockCreatePayload,
@@ -41,7 +39,7 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status
     const url: string = error?.config?.url ?? ''
-    if (status === 401 && !url.includes('/auth/login')) {
+    if (status === 401 && !url.includes('/auth/google')) {
       localStorage.removeItem(TOKEN_KEY)
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         window.location.href = '/login'
@@ -181,14 +179,9 @@ export async function getNewsTranslation(
   return data
 }
 
-// ─── Auth ──────────────────────────────────────────────────────────────────
-export async function register(payload: RegisterPayload): Promise<UserPublic> {
-  const { data } = await api.post<UserPublic>('/auth/register', payload)
-  return data
-}
-
-export async function login(payload: LoginPayload): Promise<AuthToken> {
-  const { data } = await api.post<AuthToken>('/auth/login', payload)
+// ─── Auth (Google Sign-In only) ────────────────────────────────────────────
+export async function googleLogin(credential: string): Promise<AuthToken> {
+  const { data } = await api.post<AuthToken>('/auth/google', { credential })
   return data
 }
 

@@ -125,15 +125,9 @@ export interface AuthToken {
   expires_in: number
 }
 
-export interface RegisterPayload {
-  username: string
-  email: string
-  password: string
-}
-
-export interface LoginPayload {
-  username: string
-  password: string
+/** ID token JWT from Google Identity Services; backend exchanges it for our JWT. */
+export interface GoogleAuthPayload {
+  credential: string
 }
 
 // ─── Settings (admin) ───────────────────────────────────────────────────────

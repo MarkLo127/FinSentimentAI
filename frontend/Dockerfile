@@ -6,6 +6,12 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
+# Build-time env: Vite inlines import.meta.env.VITE_* at `bun run build`, so
+# the Google OAuth Client ID must be present in the build environment, not
+# just at runtime. Railway exposes service variables as Docker build args
+# when ARG is declared here; the ENV line then makes them visible to Vite.
+ARG VITE_GOOGLE_CLIENT_ID=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN bun run build
 
 FROM nginx:1.27-alpine AS runtime

@@ -213,28 +213,12 @@
     "deleting": "刪除中…"
   },
   "login": {
-    "title": "登入",
-    "username": "帳號",
-    "password": "密碼",
-    "submit": "登入",
-    "submitting": "登入中…",
-    "no_account": "還沒帳號？",
-    "go_register": "註冊",
-    "err_invalid": "帳號或密碼錯誤"
-  },
-  "register": {
-    "title": "註冊",
-    "username": "帳號",
-    "username_hint": "(3-50 字元，字母/數字/_-)",
-    "email": "Email",
-    "password": "密碼",
-    "password_hint": "(至少 8 字元)",
-    "submit": "註冊並登入",
-    "submitting": "註冊中…",
-    "have_account": "已有帳號？",
-    "go_login": "登入",
-    "err_dup": "帳號或 email 已被註冊",
-    "err_format": "輸入格式錯誤（帳號 3+ 字元、密碼 8+ 字元、Email 需有效）"
+    "title": "登入 FinSentiment AI",
+    "subtitle": "使用 Google 帳號登入或註冊，每位使用者擁有獨立的監控清單與金鑰。",
+    "google_button": "使用 Google 繼續",
+    "signing_in": "登入中…",
+    "err_google": "Google 登入失敗，請再試一次",
+    "err_unconfigured": "尚未設定 Google Client ID（VITE_GOOGLE_CLIENT_ID）"
   },
   "time": {
     "just_now": "剛剛",
