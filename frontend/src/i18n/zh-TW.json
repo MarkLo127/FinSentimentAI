@@ -152,6 +152,9 @@
     "hide": "隱藏",
     "clear_db_title": "從你的帳號移除這把金鑰",
     "saved_hint": "已存檔，下次手動更新個股時就會用到。",
+    "autosave_hint": "貼上 key 後自動存檔，無需按按鈕。",
+    "autosaving": "正在自動存檔…",
+    "autosaved": "已自動存檔",
     "security_title": "你的金鑰是私有的",
     "security_body": "這些 API 金鑰只屬於你的帳號，加密儲存、不會與其他使用者共用。你每次觸發分析都是消耗自己金鑰的額度。",
     "keys": {

@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, Eye, EyeOff, X } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, Check, Eye, EyeOff, Loader2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Badge, Button, Card, IconButton, Input } from '../components/ui'
+import { Badge, Card, IconButton, Input } from '../components/ui'
 import { deleteSetting, getSettingsStatus, setSetting } from '../services/api'
 import type { SettingStatus } from '../types/api'
 
@@ -39,6 +39,10 @@ const KEY_META: Record<string, { labelKey: string; helpKey: string; signupUrl: s
   },
 }
 
+const AUTOSAVE_DEBOUNCE_MS = 900
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
 function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void }) {
   const { t, i18n } = useTranslation()
   const meta = KEY_META[row.key]
@@ -47,39 +51,79 @@ function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void 
   const signupUrl = meta?.signupUrl ?? ''
   const [value, setValue] = useState('')
   const [show, setShow] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
-  async function save() {
-    if (!value) return
-    setError(null)
-    setSaved(false)
-    setBusy(true)
-    try {
-      await setSetting(row.key, value.trim())
-      setValue('')
-      setSaved(true)
-      onSaved()
-      setTimeout(() => setSaved(false), 2500)
-    } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError((err as any)?.response?.data?.detail ?? String(err))
-    } finally {
-      setBusy(false)
+  // Track the last successfully-saved trimmed string so blur after a save
+  // doesn't re-POST the same value, and the debounce can't double-fire.
+  const lastSavedRef = useRef<string>('')
+  const debounceRef = useRef<number | null>(null)
+  const savedFlashRef = useRef<number | null>(null)
+
+  const doSave = useCallback(
+    async (raw: string) => {
+      const trimmed = raw.trim()
+      if (!trimmed || trimmed === lastSavedRef.current) return
+      setStatus('saving')
+      setError(null)
+      try {
+        await setSetting(row.key, trimmed)
+        lastSavedRef.current = trimmed
+        // Wipe the input post-save so the secret isn't lingering on screen,
+        // and so the placeholder flips to "paste new value to overwrite".
+        setValue('')
+        setStatus('saved')
+        onSaved()
+        if (savedFlashRef.current) window.clearTimeout(savedFlashRef.current)
+        savedFlashRef.current = window.setTimeout(() => setStatus('idle'), 2000)
+      } catch (err: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setError((err as any)?.response?.data?.detail ?? String(err))
+        setStatus('error')
+      }
+    },
+    [row.key, onSaved],
+  )
+
+  // Debounced autosave: ~900 ms after the last keystroke / paste.
+  useEffect(() => {
+    if (!value.trim()) return
+    if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    debounceRef.current = window.setTimeout(() => {
+      void doSave(value)
+    }, AUTOSAVE_DEBOUNCE_MS)
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current)
     }
+  }, [value, doSave])
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current)
+      if (savedFlashRef.current) window.clearTimeout(savedFlashRef.current)
+    }
+  }, [])
+
+  function onBlur() {
+    // Field lost focus → flush immediately, skipping the rest of the debounce.
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    void doSave(value)
   }
 
   async function clear() {
     setError(null)
-    setBusy(true)
+    setStatus('saving')
     try {
       await deleteSetting(row.key)
+      lastSavedRef.current = ''
+      setStatus('idle')
       onSaved()
     } catch (err: unknown) {
       setError(String(err))
-    } finally {
-      setBusy(false)
+      setStatus('error')
     }
   }
 
@@ -134,6 +178,7 @@ function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void 
             type={show ? 'text' : 'password'}
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            onBlur={onBlur}
             placeholder={
               row.is_set
                 ? t('settings.placeholder_overwrite')
@@ -155,23 +200,12 @@ function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void 
           />
         </div>
         <div className="flex items-center gap-2 sm:flex-shrink-0">
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={save}
-            disabled={!value}
-            loading={busy}
-            className="flex-1 sm:flex-initial"
-          >
-            {busy ? t('settings.saving') : t('settings.save')}
-          </Button>
           {row.set_in_db && (
             <IconButton
               size="md"
               variant="ghost"
               onClick={clear}
-              disabled={busy}
+              disabled={status === 'saving'}
               title={t('settings.clear_db_title')}
               aria-label={t('settings.clear_db_title')}
             >
@@ -180,9 +214,17 @@ function SettingRow({ row, onSaved }: { row: SettingStatus; onSaved: () => void 
           )}
         </div>
       </div>
-      {saved && (
-        <p className="mt-2 text-xs text-sentiment-positive">
-          {t('settings.saved_hint')}
+
+      {status === 'saving' && (
+        <p className="mt-2 text-xs text-text-muted flex items-center gap-1.5">
+          <Loader2 size={12} className="animate-spin" />
+          {t('settings.autosaving')}
+        </p>
+      )}
+      {status === 'saved' && (
+        <p className="mt-2 text-xs text-sentiment-positive flex items-center gap-1.5">
+          <Check size={12} />
+          {t('settings.autosaved')}
         </p>
       )}
       {error && <p className="mt-2 text-xs text-sentiment-negative">{error}</p>}
@@ -207,6 +249,7 @@ export default function Settings() {
         <p className="text-sm md:text-base text-text-muted mt-1">
           {t('settings.subtitle')}
         </p>
+        <p className="text-xs text-text-subtle mt-2">{t('settings.autosave_hint')}</p>
       </header>
 
       {isLoading && (

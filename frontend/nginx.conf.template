@@ -32,8 +32,14 @@ server {
         proxy_send_timeout 300s;
     }
 
-    # SPA fallback — React Router owns client-side routing
+    # SPA fallback — React Router owns client-side routing.
+    # `no-cache` forces the browser to revalidate index.html with the server's
+    # ETag every navigation, so a fresh deploy is picked up immediately even on
+    # browsers (Safari) that otherwise hold index.html in disk cache for hours.
+    # The hashed bundles in /assets/ above remain aggressively cached — the
+    # filename changes on every build, so cache invalidation is automatic.
     location / {
+        add_header Cache-Control "no-cache" always;
         try_files $uri $uri/ /index.html;
     }
 }

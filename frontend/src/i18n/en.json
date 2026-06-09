@@ -152,6 +152,9 @@
     "hide": "Hide",
     "clear_db_title": "Remove this key from your account",
     "saved_hint": "Saved. Used the next time you refresh a stock.",
+    "autosave_hint": "Paste a key and it's saved automatically — no button needed.",
+    "autosaving": "Auto-saving…",
+    "autosaved": "Auto-saved",
     "security_title": "Your keys are private",
     "security_body": "These API keys belong to your account only — they're encrypted at rest and never shared with other users. Each refresh you run spends your own keys' quota.",
     "keys": {
