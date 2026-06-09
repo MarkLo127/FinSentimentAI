@@ -23,7 +23,7 @@ class News(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     stock_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stocks.id", ondelete="SET NULL"), index=True, nullable=True
+        ForeignKey("stocks.id", ondelete="CASCADE"), index=True, nullable=True
     )
     title: Mapped[str] = mapped_column(Text)
     url: Mapped[str] = mapped_column(Text)

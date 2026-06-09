@@ -22,7 +22,7 @@ class Comment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     stock_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stocks.id", ondelete="SET NULL"), index=True, nullable=True
+        ForeignKey("stocks.id", ondelete="CASCADE"), index=True, nullable=True
     )
     platform: Mapped[str] = mapped_column(String(20))  # ptt | stocktwits
     post_title: Mapped[str | None] = mapped_column(Text, nullable=True)

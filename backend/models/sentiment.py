@@ -38,7 +38,7 @@ class SentimentResult(Base):
         ForeignKey("comments.id", ondelete="CASCADE"), index=True, nullable=True
     )
     stock_id: Mapped[int | None] = mapped_column(
-        ForeignKey("stocks.id", ondelete="SET NULL"), index=True, nullable=True
+        ForeignKey("stocks.id", ondelete="CASCADE"), index=True, nullable=True
     )
     sentiment_label: Mapped[str] = mapped_column(String(20), index=True)
     confidence: Mapped[float] = mapped_column(Float)
