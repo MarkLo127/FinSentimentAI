@@ -19,7 +19,7 @@ docker compose up -d postgres pgadmin
 cd backend  && uv sync && uv run uvicorn main:app --reload --port 8000
 cd frontend && bun install && bun run dev
 
-# Backend tests (52 tests)
+# Backend tests (40 tests)
 cd backend && uv run pytest
 cd backend && uv run pytest tests/test_pipeline.py::test_xxx -x   # single test
 
@@ -51,6 +51,8 @@ cd backend && uv run python -m scripts.run_daily_summary            # recompute 
 - **Pipeline** ([backend/services/pipeline.py](backend/services/pipeline.py)) — `run_for_ticker(ticker, *, user_id, keys: UserKeys)` fans out to 6 fetchers in [backend/services/fetchers/](backend/services/fetchers/) (Marketaux, Finnhub, NewsAPI, AlphaVantage, StockTwits, PTT) in parallel, each constructed with the **user's own key**. The 3-layer fallback extractor ([backend/services/content_extractor.py](backend/services/content_extractor.py)) is Jina Reader → trafilatura → snippet, recording the winning layer in `news.fetched_via`. Dedupe is by `(stock_id, url_hash)` with `ON CONFLICT DO NOTHING`. Alpha Vantage baseline rows get a `model_version='alpha_vantage_v1'` `sentiment_results` row.
 - **Sentiment** ([backend/services/sentiment_analyzer.py](backend/services/sentiment_analyzer.py)) — built per-request via `build_analyzer(user_key)` (not the global `get_analyzer()`), invoked by [backend/scripts/backfill_sentiment.py](backend/scripts/backfill_sentiment.py) `run(..., user_id=, anthropic_key=)` over the user's un-analyzed rows. The system prompt is **deliberately > 4096 tokens** to hit Haiku 4.5's prompt-cache minimum (marker via `cache_control={"type":"ephemeral"}`). Output is the `SentimentAnalysis` model with bilingual `title_*`/`key_drivers_*`/`reasoning_*` + `is_clickbait`. **Do not drop the prompt below 4096 tokens.**
 
+**Third LLM use — on-demand translation** ([backend/services/translator.py](backend/services/translator.py), distinct from sentiment). `GET /api/news/{id}/translation/{lang}` lazily translates an article's title+body into `zh-TW`/`en` via Claude Haiku and caches the result in `news_translations` (unique per `(news_id, target_language)`); subsequent reads are pure DB hits. It **deliberately skips** the heavy sentiment SYSTEM_PROMPT / prompt cache — every article body is unique, so a cache would always miss; keep this prompt minimal to keep cost low.
+
 **Two triggers for the same pipeline + sentiment work** (no scheduler — analysis is fully on-demand):
 - `POST /api/stocks/{symbol}/refresh` → detached `asyncio.create_task` in [backend/services/refresh_runner.py](backend/services/refresh_runner.py) (capped by `Semaphore(2)`), tracked in `refresh_jobs`, browser polls `/api/refresh-jobs/{id}`. The runner loads the triggering user's keys and threads them through pipeline → backfill → daily_summary.
 - Manual CLI: `uv run python -m scripts.run_pipeline <user_id> TSM`.
@@ -69,7 +71,8 @@ cd backend && uv run python -m scripts.run_daily_summary            # recompute 
 - New tables → add to [backend/models/](backend/models/), generate Alembic revision, **manually inspect** the autogen output (it sometimes misses index/constraint nuances).
 - Logging is `loguru`; use `logger.info("msg {}", value)` (brace placeholder), not f-strings.
 - Frontend uses React Query for all server state; don't add a second cache layer. Auth token lives in `localStorage` under `TOKEN_KEY = 'finsentiment.token'` and is attached by an axios interceptor in [frontend/src/services/api.ts](frontend/src/services/api.ts).
+- Frontend is bilingual via `i18next` (zh-TW + en, switched by [frontend/src/components/LanguageSwitcher.tsx](frontend/src/components/LanguageSwitcher.tsx)); UI strings live in [frontend/src/i18n/](frontend/src/i18n/), not inline.
 
 ## API surface
 
-Routes are mounted in [backend/main.py](backend/main.py); each module lives under [backend/routers/](backend/routers/). Auth uses JWT (`Bearer`) via [backend/services/auth.py](backend/services/auth.py). **Every route requires login except `/api/auth/*`** (register/login) — stocks, news, market, refresh-jobs, and admin/settings are all scoped to `current_user`. The frontend gates routes with `RequireAuth` ([frontend/src/components/RequireAuth.tsx](frontend/src/components/RequireAuth.tsx)) and bounces to `/login` on any 401. See README.md for the endpoint table.
+Routes are mounted in [backend/main.py](backend/main.py); each module lives under [backend/routers/](backend/routers/). **Login is Google OAuth only** — the sole auth endpoint is `POST /api/auth/google` ([backend/routers/auth.py](backend/routers/auth.py)), which verifies a Google ID token (`google_client_id` must be set) and mints an app JWT; there is no email/password register/login. Subsequent requests carry that JWT as `Bearer`, validated in [backend/services/auth.py](backend/services/auth.py). **Every route requires login except `/api/auth/*`** — stocks, news, market, refresh-jobs, and admin/settings are all scoped to `current_user`. The frontend gates routes with `RequireAuth` ([frontend/src/components/RequireAuth.tsx](frontend/src/components/RequireAuth.tsx)) and bounces to `/login` on any 401. See README.md for the endpoint table.
